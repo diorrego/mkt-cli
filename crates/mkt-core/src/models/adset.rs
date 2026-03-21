@@ -133,6 +133,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn adset_id_serde_roundtrip() {
         let id = AdSetId("adset_789".into());
         let json = serde_json::to_string(&id).expect("serialize AdSetId");
@@ -144,6 +145,7 @@ mod tests {
     #[test_case(AdSetStatus::Paused, "paused" ; "paused")]
     #[test_case(AdSetStatus::Archived, "archived" ; "archived")]
     #[test_case(AdSetStatus::Deleted, "deleted" ; "deleted")]
+    #[allow(clippy::needless_pass_by_value)]
     fn adset_status_display(status: AdSetStatus, expected: &str) {
         assert_eq!(status.to_string(), expected);
     }
@@ -155,6 +157,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn adset_status_serde_roundtrip() {
         let json = serde_json::to_string(&AdSetStatus::Active).expect("serialize");
         assert_eq!(json, r#""active""#);
@@ -163,6 +166,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn unknown_status_deserializes_as_other() {
         let status: AdSetStatus =
             serde_json::from_str(r#""some_new_status""#).expect("deserialize");
@@ -187,6 +191,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn adset_optional_fields_skip_serializing_if_none() {
         let now = chrono::Utc::now();
         let adset = AdSet {

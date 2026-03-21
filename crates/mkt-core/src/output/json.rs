@@ -20,6 +20,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn json_output_is_valid() {
         let items = vec![TestItem {
             name: "test".into(),
@@ -30,6 +31,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn json_output_empty_array() {
         let items: Vec<TestItem> = vec![];
         let output = format_json(&items).expect("format");
