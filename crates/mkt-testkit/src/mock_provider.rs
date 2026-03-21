@@ -49,7 +49,7 @@ impl MockProvider {
     }
 
     /// Create a healthy mock pre-seeded with the given campaigns.
-    pub fn with_campaigns(campaigns: Vec<Campaign>) -> Self {
+    pub const fn with_campaigns(campaigns: Vec<Campaign>) -> Self {
         Self {
             campaigns,
             should_error: false,
@@ -120,7 +120,7 @@ impl MarketingProvider for MockProvider {
         }
 
         if let Some(limit) = filters.limit {
-            data.truncate(limit as usize);
+            data.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
         }
 
         Ok(Paginated {
@@ -142,7 +142,7 @@ impl MarketingProvider for MockProvider {
             .ok_or_else(|| MktError::ApiError {
                 provider: "mock".to_string(),
                 status: 404,
-                message: format!("campaign '{}' not found", id),
+                message: format!("campaign '{id}' not found"),
                 retry_after: None,
             })
     }
@@ -171,7 +171,7 @@ impl MarketingProvider for MockProvider {
             .ok_or_else(|| MktError::ApiError {
                 provider: "mock".to_string(),
                 status: 404,
-                message: format!("campaign '{}' not found", id),
+                message: format!("campaign '{id}' not found"),
                 retry_after: None,
             })
     }
@@ -187,7 +187,7 @@ impl MarketingProvider for MockProvider {
             Err(MktError::ApiError {
                 provider: "mock".to_string(),
                 status: 404,
-                message: format!("campaign '{}' not found", id),
+                message: format!("campaign '{id}' not found"),
                 retry_after: None,
             })
         }
@@ -195,6 +195,7 @@ impl MarketingProvider for MockProvider {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use chrono::Utc;
@@ -261,7 +262,7 @@ mod tests {
     #[test]
     fn test_mock_provider_with_campaigns_stores_them() {
         let campaigns = vec![make_campaign("1", "Alpha", CampaignStatus::Active)];
-        let p = MockProvider::with_campaigns(campaigns.clone());
+        let p = MockProvider::with_campaigns(campaigns);
         assert_eq!(p.campaigns.len(), 1);
         assert_eq!(p.campaigns[0].id.0, "1");
     }
@@ -378,6 +379,7 @@ mod tests {
         assert!(matches!(err, MktError::ApiError { status: 500, .. }));
     }
 
+    #[allow(clippy::panic)]
     #[tokio::test]
     async fn test_list_campaigns_error_message_is_preserved() {
         let p = MockProvider::failing("custom error text");

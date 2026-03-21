@@ -128,6 +128,7 @@ pub fn page_post_response() -> serde_json::Value {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
