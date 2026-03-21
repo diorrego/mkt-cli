@@ -1,0 +1,13 @@
+[package]
+name = "mkt-tiktok"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "TikTok for Business provider for the mkt marketing CLI (stub)"
+
+[lints]
+workspace = true
+
+[dependencies]
+mkt-core = { path = "../mkt-core" }
