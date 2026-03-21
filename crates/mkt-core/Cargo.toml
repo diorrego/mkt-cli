@@ -1,0 +1,32 @@
+[package]
+name = "mkt-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Core traits, models, config, and output for the mkt marketing CLI"
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono.workspace = true
+comfy-table.workspace = true
+csv.workspace = true
+dirs.workspace = true
+reqwest.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+proptest.workspace = true
+test-case.workspace = true
+tokio-test.workspace = true
