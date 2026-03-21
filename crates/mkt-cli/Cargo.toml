@@ -1,0 +1,42 @@
+[package]
+name = "mkt-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Multi-platform marketing CLI"
+
+[[bin]]
+name = "mkt"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+mkt-core = { path = "../mkt-core" }
+mkt-meta = { path = "../mkt-meta", optional = true }
+mkt-google = { path = "../mkt-google", optional = true }
+mkt-tiktok = { path = "../mkt-tiktok", optional = true }
+mkt-linkedin = { path = "../mkt-linkedin", optional = true }
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+secrecy.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+mkt-testkit = { path = "../mkt-testkit" }
+
+[features]
+default = ["meta"]
+meta = ["dep:mkt-meta"]
+google = ["dep:mkt-google"]
+tiktok = ["dep:mkt-tiktok"]
+linkedin = ["dep:mkt-linkedin"]
+full = ["meta", "google", "tiktok", "linkedin"]
