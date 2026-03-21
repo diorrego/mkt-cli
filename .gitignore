@@ -1,0 +1,8 @@
+/target
+*.swp
+*.swo
+*~
+.env
+.DS_Store
+*.lcov
+coverage/
