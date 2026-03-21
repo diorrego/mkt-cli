@@ -87,9 +87,15 @@ fn set_profile(
     let config_dir = config::config_dir()?;
     std::fs::create_dir_all(&config_dir)?;
 
-    // Write the config file.
+    // Write the config file with restrictive permissions.
     let config_path = config::config_file()?;
     std::fs::write(&config_path, toml_content)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o600))?;
+    }
 
     Ok(format!(
         "Profile '{name}' saved to {}.",
