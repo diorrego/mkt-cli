@@ -1,0 +1,29 @@
+[package]
+name = "mkt-meta"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Meta (Facebook/Instagram) provider for the mkt marketing CLI"
+
+[lints]
+workspace = true
+
+[dependencies]
+mkt-core = { path = "../mkt-core" }
+chrono.workspace = true
+reqwest.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+mkt-testkit = { path = "../mkt-testkit" }
+insta.workspace = true
+test-case.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+wiremock.workspace = true
