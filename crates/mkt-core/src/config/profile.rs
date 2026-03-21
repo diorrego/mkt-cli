@@ -100,10 +100,10 @@ pub struct Profile {
     /// Google Ads provider config.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub google: Option<GoogleConfig>,
-    /// `TikTok` provider config.
+    /// TikTok provider config.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tiktok: Option<TikTokConfig>,
-    /// `LinkedIn` provider config.
+    /// LinkedIn provider config.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub linkedin: Option<LinkedInConfig>,
 }
@@ -148,7 +148,7 @@ pub struct GoogleConfig {
     pub customer_id: Option<String>,
 }
 
-/// `TikTok` for Business provider configuration (stub).
+/// TikTok for Business provider configuration (stub).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TikTokConfig {
     /// Access token.
@@ -159,7 +159,7 @@ pub struct TikTokConfig {
     pub advertiser_id: Option<String>,
 }
 
-/// `LinkedIn` Marketing provider configuration (stub).
+/// LinkedIn Marketing provider configuration (stub).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinkedInConfig {
     /// Access token.

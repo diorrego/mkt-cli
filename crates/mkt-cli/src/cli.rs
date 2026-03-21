@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 /// Multi-platform marketing CLI.
 ///
 /// Manage ads, audiences, organic posts, and analytics across
-/// Meta, Google Ads, `TikTok`, and `LinkedIn` from a single terminal.
+/// Meta, Google Ads, TikTok, and LinkedIn from a single terminal.
 #[derive(Parser, Debug)]
 #[command(name = "mkt", version, about, long_about = None)]
 pub struct Cli {
@@ -80,7 +80,7 @@ pub enum Commands {
         domain: StubDomain,
     },
 
-    /// `TikTok` for Business provider.
+    /// TikTok for Business provider.
     #[cfg(feature = "tiktok")]
     Tiktok {
         /// Domain subcommand.
@@ -88,7 +88,7 @@ pub enum Commands {
         domain: StubDomain,
     },
 
-    /// `LinkedIn` Marketing provider.
+    /// LinkedIn Marketing provider.
     #[cfg(feature = "linkedin")]
     Linkedin {
         /// Domain subcommand.

@@ -1,6 +1,6 @@
 //! Core provider trait for the `mkt` marketing CLI.
 //!
-//! Every platform (Meta, Google, `TikTok`, `LinkedIn`) implements
+//! Every platform (Meta, Google, TikTok, LinkedIn) implements
 //! [`MarketingProvider`]. Methods return unified domain models from
 //! [`crate::models`], not platform-specific structs.
 //!

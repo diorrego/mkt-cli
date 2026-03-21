@@ -1,7 +1,7 @@
 //! Wiremock helpers for testing HTTP-based provider crates.
 //!
-//! Provides [`MockServer`] convenience wrappers and pre-built
-//! [`ResponseTemplate`] factories that mirror real Meta Graph API responses.
+//! Provides `MockServer` convenience wrappers and pre-built
+//! `ResponseTemplate` factories that mirror real Meta Graph API responses.
 //!
 //! # Quick start
 //!
