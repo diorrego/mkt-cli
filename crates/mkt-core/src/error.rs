@@ -178,8 +178,11 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::panic)]
     fn from_serde_json_error() {
-        let json_err = serde_json::from_str::<serde_json::Value>("not json").unwrap_err();
+        let Err(json_err) = serde_json::from_str::<serde_json::Value>("not json") else {
+            panic!("expected JSON parse error");
+        };
         let mkt_err: MktError = json_err.into();
         assert!(matches!(mkt_err, MktError::SerdeJson(_)));
     }
