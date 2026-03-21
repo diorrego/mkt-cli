@@ -6,3 +6,6 @@
 .DS_Store
 *.lcov
 coverage/
+
+# Prompts and development notes
+dev/
