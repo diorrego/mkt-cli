@@ -488,7 +488,12 @@ impl MarketingProvider for MetaProvider {
                 .as_object()
                 .and_then(|m| m.values().next())
                 .and_then(|v| v["hash"].as_str())
-                .unwrap_or("unknown");
+                .ok_or_else(|| MktError::ApiError {
+                    provider: "meta".into(),
+                    status: 0,
+                    message: "image upload response missing hash".into(),
+                    retry_after: None,
+                })?;
 
             Ok(MediaAsset {
                 id: MediaAssetId(hash.to_string()),
@@ -525,7 +530,12 @@ impl MarketingProvider for MetaProvider {
                 body["description"] = serde_json::Value::String(desc.clone());
             }
             let resp = self.client.post(&path, &body).await?;
-            let video_id = resp["id"].as_str().unwrap_or("unknown");
+            let video_id = resp["id"].as_str().ok_or_else(|| MktError::ApiError {
+                provider: "meta".into(),
+                status: 0,
+                message: "video upload response missing 'id'".into(),
+                retry_after: None,
+            })?;
 
             Ok(MediaAsset {
                 id: MediaAssetId(video_id.to_string()),
