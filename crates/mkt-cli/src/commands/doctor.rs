@@ -4,6 +4,7 @@ use mkt_core::config;
 use mkt_core::error::Result;
 
 /// Verify config, tokens, and API connectivity.
+#[allow(clippy::unnecessary_wraps)]
 pub fn execute(config_path: Option<&std::path::Path>) -> Result<String> {
     let mut lines = vec!["mkt doctor — checking configuration...".to_string()];
 

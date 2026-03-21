@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, missing_docs)]
+
 use assert_cmd::Command;
 use predicates::prelude::*;
 
