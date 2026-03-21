@@ -1202,6 +1202,7 @@ dependencies = [
  "secrecy",
  "serde_json",
  "tokio",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1270,6 +1271,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "mkt-core",
+ "reqwest",
  "serde_json",
  "tokio",
  "wiremock",

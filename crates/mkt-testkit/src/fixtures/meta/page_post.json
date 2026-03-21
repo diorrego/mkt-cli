@@ -1,0 +1,36 @@
+{
+  "id": "123456789_987654321",
+  "post_id": "987654321",
+  "story_fbid": null,
+  "message": "Spring is here! Explore our new collection and enjoy exclusive discounts. Shop now and save up to 40% on select items. 🌸 #SpringSale #NewCollection",
+  "story": "added a new photo.",
+  "created_time": "2026-03-15T12:00:00+0000",
+  "updated_time": "2026-03-15T12:00:00+0000",
+  "full_picture": "https://scontent.example.com/images/spring-collection-2026.jpg",
+  "picture": "https://scontent.example.com/images/spring-collection-2026-thumb.jpg",
+  "permalink_url": "https://www.facebook.com/yourpage/posts/987654321",
+  "type": "photo",
+  "status_type": "added_photos",
+  "is_published": true,
+  "is_hidden": false,
+  "is_expired": false,
+  "can_hide": true,
+  "can_like": true,
+  "can_comment": "everyone",
+  "can_remove": true,
+  "can_reply_privately": false,
+  "message_tags": [],
+  "likes": {
+    "summary": {
+      "total_count": 0,
+      "can_like": true,
+      "has_liked": false
+    }
+  },
+  "comments": {
+    "summary": {
+      "total_count": 0,
+      "can_comment": true
+    }
+  }
+}
