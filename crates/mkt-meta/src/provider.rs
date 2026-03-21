@@ -26,7 +26,11 @@ pub struct MetaProvider {
 
 impl MetaProvider {
     /// Create a new Meta provider.
-    pub fn new(client: MetaClient, page_id: Option<String>, ig_user_id: Option<String>) -> Self {
+    pub const fn new(
+        client: MetaClient,
+        page_id: Option<String>,
+        ig_user_id: Option<String>,
+    ) -> Self {
         Self {
             client,
             page_id,
@@ -324,10 +328,10 @@ impl MarketingProvider for MetaProvider {
                 query.metrics.join(",")
             };
 
-            let mut params: Vec<(&str, String)> = vec![("fields".into(), metrics)];
+            let mut params: Vec<(&str, String)> = vec![("fields", metrics)];
 
             if !query.breakdowns.is_empty() {
-                params.push(("breakdowns".into(), query.breakdowns.join(",")));
+                params.push(("breakdowns", query.breakdowns.join(",")));
             }
 
             if let Some(range) = &query.date_range {
@@ -336,17 +340,15 @@ impl MarketingProvider for MetaProvider {
                     range.start.format("%Y-%m-%d"),
                     range.end.format("%Y-%m-%d")
                 );
-                params.push(("time_range".into(), time_range));
+                params.push(("time_range", time_range));
             }
 
             if let Some(level) = &query.level {
-                params.push(("level".into(), level.to_string()));
+                params.push(("level", level.to_string()));
             }
 
-            let param_refs: Vec<(&str, &str)> = params
-                .iter()
-                .map(|(k, v)| (k.as_ref(), v.as_ref()))
-                .collect();
+            let param_refs: Vec<(&str, &str)> =
+                params.iter().map(|(k, v)| (*k, v.as_ref())).collect();
 
             let resp = self.client.get(&path, &param_refs).await?;
             mapping::meta_insights_to_domain(&resp)
@@ -547,7 +549,6 @@ impl MarketingProvider for MetaProvider {
         params: &serde_json::Value,
     ) -> impl std::future::Future<Output = Result<serde_json::Value>> + Send {
         // We need owned copies so the future is `Send + 'static`-compatible.
-        let method = method.clone();
         let path = path.to_string();
         let params = params.clone();
 
@@ -578,26 +579,25 @@ impl MarketingProvider for MetaProvider {
 
     // ── Health check ───────────────────────────────────
 
-    fn health_check(&self) -> impl std::future::Future<Output = Result<ProviderHealth>> + Send {
-        async move {
-            let start = std::time::Instant::now();
-            let result = self.client.get("me", &[]).await;
-            let latency = start.elapsed().as_millis() as u64;
+    async fn health_check(&self) -> Result<ProviderHealth> {
+        let start = std::time::Instant::now();
+        let result = self.client.get("me", &[]).await;
+        #[allow(clippy::cast_possible_truncation)] // health-check latency fits in u64
+        let latency = start.elapsed().as_millis() as u64;
 
-            match result {
-                Ok(_) => Ok(ProviderHealth {
-                    provider: "meta".into(),
-                    healthy: true,
-                    latency_ms: latency,
-                    message: None,
-                }),
-                Err(e) => Ok(ProviderHealth {
-                    provider: "meta".into(),
-                    healthy: false,
-                    latency_ms: latency,
-                    message: Some(e.to_string()),
-                }),
-            }
+        match result {
+            Ok(_) => Ok(ProviderHealth {
+                provider: "meta".into(),
+                healthy: true,
+                latency_ms: latency,
+                message: None,
+            }),
+            Err(e) => Ok(ProviderHealth {
+                provider: "meta".into(),
+                healthy: false,
+                latency_ms: latency,
+                message: Some(e.to_string()),
+            }),
         }
     }
 }
