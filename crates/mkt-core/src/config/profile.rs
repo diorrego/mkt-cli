@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{MktError, Result};
 
 /// Top-level configuration loaded from `config.toml`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MktConfig {
     /// Global defaults.
     #[serde(default)]
@@ -23,6 +23,10 @@ pub struct MktConfig {
 
 impl MktConfig {
     /// Load configuration from a TOML file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read or contains invalid TOML.
     pub fn load_from_file(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: Self = toml::from_str(&content)?;
@@ -30,6 +34,11 @@ impl MktConfig {
     }
 
     /// Load config from the default location, returning a default config if not found.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the config directory cannot be determined or
+    /// the config file exists but contains invalid TOML.
     pub fn load() -> Result<Self> {
         let file = super::config_file()?;
         if file.exists() {
@@ -40,19 +49,14 @@ impl MktConfig {
     }
 
     /// Get a profile by name, falling back to the default profile.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MktError::ConfigError`] if the named profile does not exist.
     pub fn profile(&self, name: &str) -> Result<&Profile> {
         self.profiles
             .get(name)
             .ok_or_else(|| MktError::ConfigError(format!("Profile '{name}' not found")))
-    }
-}
-
-impl Default for MktConfig {
-    fn default() -> Self {
-        Self {
-            defaults: Defaults::default(),
-            profiles: HashMap::new(),
-        }
     }
 }
 
@@ -110,7 +114,7 @@ pub struct MetaConfig {
     /// User access token (overridden by `MKT_META_ACCESS_TOKEN` env var).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
-    /// Ad account ID (e.g. "act_123456789").
+    /// Ad account ID (e.g. `act_123456789`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ad_account_id: Option<String>,
     /// Facebook Page ID for organic posts.
@@ -171,6 +175,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn parse_minimal_config() {
         let toml_str = r#"
 [defaults]
@@ -197,6 +202,7 @@ ad_account_id = "act_123"
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn parse_empty_config() {
         let toml_str = "";
         let config: MktConfig = toml::from_str(toml_str).expect("parse TOML");
@@ -206,13 +212,17 @@ ad_account_id = "act_123"
     }
 
     #[test]
+    #[allow(clippy::panic)]
     fn missing_profile_returns_error() {
         let config = MktConfig::default();
-        let err = config.profile("nonexistent").unwrap_err();
+        let Err(err) = config.profile("nonexistent") else {
+            panic!("expected config error");
+        };
         assert!(err.to_string().contains("not found"));
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn config_with_multiple_profiles() {
         let toml_str = r#"
 [profiles.client-a]

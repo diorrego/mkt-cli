@@ -40,6 +40,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn csv_with_items() {
         let items = vec![
             TestItem {
@@ -58,6 +59,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn csv_escapes_commas() {
         let items = vec![TestItem {
             name: "Hello, World".into(),
@@ -68,6 +70,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn csv_empty() {
         let items: Vec<TestItem> = vec![];
         let output = format_csv(&items).expect("format");

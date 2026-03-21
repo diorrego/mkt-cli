@@ -1,0 +1,131 @@
+{
+  "data": [
+    {
+      "id": "23845600000000001",
+      "campaign_id": "120330000000000001",
+      "name": "Lookalike — Email List 1%",
+      "status": "ACTIVE",
+      "effective_status": "ACTIVE",
+      "daily_budget": "2500",
+      "budget_remaining": "1800",
+      "bid_amount": 150,
+      "billing_event": "IMPRESSIONS",
+      "optimization_goal": "LEAD_GENERATION",
+      "targeting": {
+        "age_min": 25,
+        "age_max": 55,
+        "genders": [1, 2],
+        "geo_locations": {
+          "countries": ["US", "CA"],
+          "location_types": ["home", "recent"]
+        },
+        "custom_audiences": [
+          { "id": "23845600000099001", "name": "Email Lookalike 1%" }
+        ],
+        "facebook_positions": ["feed", "instagram_feed"],
+        "publisher_platforms": ["facebook", "instagram"]
+      },
+      "promoted_object": {
+        "pixel_id": "987654321",
+        "custom_event_type": "LEAD"
+      },
+      "attribution_spec": [
+        { "event_type": "CLICK_THROUGH", "window_days": 7 },
+        { "event_type": "VIEW_THROUGH", "window_days": 1 }
+      ],
+      "created_time": "2026-01-15T10:35:00+0000",
+      "updated_time": "2026-02-20T09:10:00+0000",
+      "start_time": "2026-01-20T00:00:00+0000",
+      "end_time": null
+    },
+    {
+      "id": "23845600000000002",
+      "campaign_id": "120330000000000001",
+      "name": "Interest — Home Improvement",
+      "status": "ACTIVE",
+      "effective_status": "ACTIVE",
+      "daily_budget": "2500",
+      "budget_remaining": "1400",
+      "bid_amount": 200,
+      "billing_event": "IMPRESSIONS",
+      "optimization_goal": "LEAD_GENERATION",
+      "targeting": {
+        "age_min": 30,
+        "age_max": 65,
+        "genders": [1, 2],
+        "geo_locations": {
+          "countries": ["US"],
+          "location_types": ["home"]
+        },
+        "flexible_spec": [
+          {
+            "interests": [
+              { "id": "6002839660079", "name": "Home improvement" },
+              { "id": "6003109820100", "name": "Do it yourself (DIY)" }
+            ]
+          }
+        ],
+        "facebook_positions": ["feed", "right_hand_column"],
+        "publisher_platforms": ["facebook"]
+      },
+      "promoted_object": {
+        "pixel_id": "987654321",
+        "custom_event_type": "LEAD"
+      },
+      "attribution_spec": [
+        { "event_type": "CLICK_THROUGH", "window_days": 7 }
+      ],
+      "created_time": "2026-01-16T14:00:00+0000",
+      "updated_time": "2026-03-01T14:22:00+0000",
+      "start_time": "2026-01-20T00:00:00+0000",
+      "end_time": null
+    },
+    {
+      "id": "23845600000000003",
+      "campaign_id": "120330000000000001",
+      "name": "Retargeting — Website Visitors 30d",
+      "status": "PAUSED",
+      "effective_status": "CAMPAIGN_PAUSED",
+      "daily_budget": "0",
+      "budget_remaining": "0",
+      "bid_amount": 300,
+      "billing_event": "IMPRESSIONS",
+      "optimization_goal": "LEAD_GENERATION",
+      "targeting": {
+        "age_min": 18,
+        "age_max": 65,
+        "genders": [1, 2],
+        "geo_locations": {
+          "countries": ["US", "CA", "GB"],
+          "location_types": ["home", "recent"]
+        },
+        "custom_audiences": [
+          { "id": "23845600000099002", "name": "Website Visitors 30 Days" }
+        ],
+        "excluded_custom_audiences": [
+          { "id": "23845600000099003", "name": "Converted Leads 90d" }
+        ],
+        "facebook_positions": ["feed", "instagram_feed", "instagram_stories"],
+        "publisher_platforms": ["facebook", "instagram"]
+      },
+      "promoted_object": {
+        "pixel_id": "987654321",
+        "custom_event_type": "LEAD"
+      },
+      "attribution_spec": [
+        { "event_type": "CLICK_THROUGH", "window_days": 1 },
+        { "event_type": "VIEW_THROUGH", "window_days": 1 }
+      ],
+      "created_time": "2026-01-17T16:00:00+0000",
+      "updated_time": "2026-02-28T12:00:00+0000",
+      "start_time": "2026-01-20T00:00:00+0000",
+      "end_time": null
+    }
+  ],
+  "paging": {
+    "cursors": {
+      "before": "QVFIUjJNYWRzZAtdHlEaGtsQ3ZAhNDhCSE9ualJ",
+      "after": "QVFIUkx5YWRzZAtdHlEaGtsQ3ZAhNDhCSE9ualJ"
+    }
+  }
+}

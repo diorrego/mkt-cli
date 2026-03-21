@@ -1,0 +1,91 @@
+{
+  "data": [
+    {
+      "campaign_id": "120330000000000001",
+      "campaign_name": "Summer Sale 2026",
+      "adset_id": "23845600000000001",
+      "adset_name": "Lookalike — Email List 1%",
+      "impressions": "45230",
+      "clicks": "1876",
+      "unique_clicks": "1654",
+      "spend": "234.56",
+      "reach": "38200",
+      "frequency": "1.18",
+      "cpm": "5.19",
+      "cpc": "0.125",
+      "ctr": "4.15",
+      "cpp": "6.14",
+      "actions": [
+        { "action_type": "lead", "value": "142" },
+        { "action_type": "link_click", "value": "1876" },
+        { "action_type": "page_engagement", "value": "2110" }
+      ],
+      "cost_per_action_type": [
+        { "action_type": "lead", "value": "1.65" },
+        { "action_type": "link_click", "value": "0.125" }
+      ],
+      "date_start": "2026-03-01",
+      "date_stop": "2026-03-01"
+    },
+    {
+      "campaign_id": "120330000000000001",
+      "campaign_name": "Summer Sale 2026",
+      "adset_id": "23845600000000001",
+      "adset_name": "Lookalike — Email List 1%",
+      "impressions": "52100",
+      "clicks": "2134",
+      "unique_clicks": "1923",
+      "spend": "278.90",
+      "reach": "43800",
+      "frequency": "1.19",
+      "cpm": "5.35",
+      "cpc": "0.131",
+      "ctr": "4.10",
+      "cpp": "6.37",
+      "actions": [
+        { "action_type": "lead", "value": "168" },
+        { "action_type": "link_click", "value": "2134" },
+        { "action_type": "page_engagement", "value": "2450" }
+      ],
+      "cost_per_action_type": [
+        { "action_type": "lead", "value": "1.66" },
+        { "action_type": "link_click", "value": "0.131" }
+      ],
+      "date_start": "2026-03-02",
+      "date_stop": "2026-03-02"
+    },
+    {
+      "campaign_id": "120330000000000001",
+      "campaign_name": "Summer Sale 2026",
+      "adset_id": "23845600000000002",
+      "adset_name": "Interest — Home Improvement",
+      "impressions": "31400",
+      "clicks": "980",
+      "unique_clicks": "890",
+      "spend": "155.20",
+      "reach": "28600",
+      "frequency": "1.10",
+      "cpm": "4.94",
+      "cpc": "0.158",
+      "ctr": "3.12",
+      "cpp": "5.43",
+      "actions": [
+        { "action_type": "lead", "value": "78" },
+        { "action_type": "link_click", "value": "980" },
+        { "action_type": "page_engagement", "value": "1120" }
+      ],
+      "cost_per_action_type": [
+        { "action_type": "lead", "value": "1.99" },
+        { "action_type": "link_click", "value": "0.158" }
+      ],
+      "date_start": "2026-03-01",
+      "date_stop": "2026-03-02"
+    }
+  ],
+  "paging": {
+    "cursors": {
+      "before": "QVFIUjJNaW5zaWdodHNhZmViYW9v",
+      "after": "QVFIUkx5aW5zaWdodHNhZmViYW9v"
+    }
+  }
+}

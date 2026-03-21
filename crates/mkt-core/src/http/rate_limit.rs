@@ -26,17 +26,19 @@ impl RateLimiter {
     /// # Errors
     ///
     /// Returns an error if the semaphore is closed.
+    #[allow(clippy::significant_drop_tightening)] // permit is consumed by .forget()
     pub async fn acquire(&self, cost: u32) -> crate::error::Result<()> {
         let permit =
             self.semaphore.acquire_many(cost).await.map_err(|e| {
                 crate::error::MktError::ConfigError(format!("Rate limiter error: {e}"))
             })?;
 
-        // Forget the permit — it will be replenished by the background refill task.
+        // Forget the permit immediately — it will be replenished below.
         // For simplicity, we immediately release it. This means the limiter acts as
         // a concurrency limiter rather than a strict rate limiter. A stricter
         // implementation can use a background task to drain and refill.
         permit.forget();
+
         self.semaphore.add_permits(cost as usize);
 
         Ok(())

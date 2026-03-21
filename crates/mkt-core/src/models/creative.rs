@@ -41,7 +41,7 @@ pub struct Creative {
     /// Destination link URL.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_url: Option<String>,
-    /// Call-to-action label (e.g. "LEARN_MORE").
+    /// Call-to-action label (e.g. `LEARN_MORE`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub call_to_action: Option<String>,
     /// When the creative was created.
@@ -138,6 +138,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn creative_id_serde_roundtrip() {
         let id = CreativeId("creative_789".into());
         let json = serde_json::to_string(&id).expect("serialize CreativeId");
@@ -158,6 +159,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn creative_optional_fields_skip_serializing_if_none() {
         let now = chrono::Utc::now();
         let creative = Creative {
@@ -182,6 +184,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn create_dark_post_input_serde_roundtrip() {
         let input = CreateDarkPostInput {
             page_id: "page_1".into(),
@@ -201,6 +204,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn create_dark_post_input_skips_none_fields() {
         let input = CreateDarkPostInput {
             page_id: "page_1".into(),

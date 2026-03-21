@@ -10,6 +10,10 @@ use crate::error::{MktError, Result};
 /// 1. `MKT_CONFIG_DIR` environment variable
 /// 2. `$XDG_CONFIG_HOME/mkt` (Linux/macOS)
 /// 3. `%APPDATA%\mkt` (Windows)
+///
+/// # Errors
+///
+/// Returns [`MktError::ConfigError`] if the config directory cannot be determined.
 pub fn config_dir() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("MKT_CONFIG_DIR") {
         return Ok(PathBuf::from(dir));
@@ -21,6 +25,10 @@ pub fn config_dir() -> Result<PathBuf> {
 }
 
 /// Returns the path to `config.toml`.
+///
+/// # Errors
+///
+/// Returns [`MktError::ConfigError`] if the config directory cannot be determined.
 pub fn config_file() -> Result<PathBuf> {
     config_dir().map(|d| d.join("config.toml"))
 }
@@ -30,6 +38,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn config_dir_falls_back_to_xdg() {
         // When MKT_CONFIG_DIR is not set, should use dirs::config_dir()
         // This test only works if MKT_CONFIG_DIR is not already set
@@ -40,6 +49,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn config_file_is_inside_config_dir() {
         if std::env::var("MKT_CONFIG_DIR").is_err() {
             let dir = config_dir().expect("dir");

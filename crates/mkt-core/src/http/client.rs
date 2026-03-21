@@ -16,6 +16,10 @@ const DEFAULT_TIMEOUT_SECS: u64 = 30;
 /// - Gzip + Brotli decompression
 /// - Configurable timeout (default: 30s)
 /// - Custom User-Agent
+///
+/// # Errors
+///
+/// Returns an error if the HTTP client cannot be built (e.g. TLS init failure).
 pub fn build_http_client(timeout_secs: Option<u64>) -> Result<Client> {
     let timeout = Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS));
 

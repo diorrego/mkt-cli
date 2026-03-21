@@ -40,16 +40,21 @@ pub struct GraphApiErrorResponse {
 impl GraphApiErrorResponse {
     /// Convert this Graph API error into an [`MktError::ApiError`].
     pub fn into_mkt_error(self, status: u16) -> MktError {
+        let fbtrace = self.error.fbtrace_id.as_deref().unwrap_or("none");
         MktError::ApiError {
             provider: "meta".into(),
             status,
-            message: self.error.message,
+            message: format!(
+                "{} (code={}, fbtrace_id={})",
+                self.error.message, self.error.code, fbtrace
+            ),
             retry_after: None,
         }
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

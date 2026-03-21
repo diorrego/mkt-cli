@@ -10,6 +10,11 @@ use crate::error::{MktError, Result};
 /// 1. Environment variable (if `env_var_name` is provided)
 /// 2. Config value (if `config_value` is provided)
 /// 3. Returns an `AuthError`
+///
+/// # Errors
+///
+/// Returns [`MktError::AuthError`] if no token can be resolved from either
+/// the environment variable or the config value.
 pub fn resolve_token(
     provider: &str,
     env_var_name: &str,
@@ -46,6 +51,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn resolve_from_config_value() {
         // Use a key that definitely does NOT exist
         let key = "MKT_TEST_TOKEN_DEFINITELY_NOT_SET_98765";
@@ -55,11 +61,14 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::panic)]
     fn missing_token_returns_auth_error() {
         let key = "MKT_TEST_TOKEN_DEFINITELY_NOT_SET_11111";
         let result = resolve_token("test", key, None);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("No access token"));
+        let Err(e) = result else {
+            panic!("expected auth error");
+        };
+        assert!(e.to_string().contains("No access token"));
     }
 
     #[test]

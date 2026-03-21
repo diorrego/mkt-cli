@@ -34,7 +34,7 @@ pub struct Campaign {
     pub name: String,
     /// Current status.
     pub status: CampaignStatus,
-    /// Campaign objective (e.g. "OUTCOME_LEADS").
+    /// Campaign objective (e.g. `OUTCOME_LEADS`).
     pub objective: String,
     /// Budget configuration, if set.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -190,11 +190,13 @@ mod tests {
     #[test_case(CampaignStatus::Archived, "archived" ; "archived")]
     #[test_case(CampaignStatus::Draft, "draft" ; "draft")]
     #[test_case(CampaignStatus::Deleted, "deleted" ; "deleted")]
+    #[allow(clippy::needless_pass_by_value)]
     fn campaign_status_display(status: CampaignStatus, expected: &str) {
         assert_eq!(status.to_string(), expected);
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn campaign_status_serde_roundtrip() {
         let json = serde_json::to_string(&CampaignStatus::Active).expect("serialize");
         assert_eq!(json, r#""active""#);
@@ -203,6 +205,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn unknown_status_deserializes_as_other() {
         let status: CampaignStatus =
             serde_json::from_str(r#""something_new""#).expect("deserialize");

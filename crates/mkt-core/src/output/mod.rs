@@ -59,6 +59,10 @@ pub trait Formattable {
 }
 
 /// Format a list of items in the specified output format.
+///
+/// # Errors
+///
+/// Returns an error if JSON serialization or CSV writing fails.
 pub fn format_output<T: Formattable + Serialize>(
     items: &[T],
     format: OutputFormat,
@@ -82,6 +86,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn output_format_from_str() {
         assert_eq!(
             "table".parse::<OutputFormat>().expect("ok"),

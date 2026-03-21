@@ -35,10 +35,9 @@ pub fn meta_status_to_domain(status: &str) -> CampaignStatus {
 pub fn domain_status_to_meta(status: &CampaignStatus) -> String {
     match status {
         CampaignStatus::Active => "ACTIVE".to_string(),
-        CampaignStatus::Paused => "PAUSED".to_string(),
+        CampaignStatus::Paused | CampaignStatus::Draft => "PAUSED".to_string(),
         CampaignStatus::Archived => "ARCHIVED".to_string(),
         CampaignStatus::Deleted => "DELETED".to_string(),
-        CampaignStatus::Draft => "PAUSED".to_string(),
         CampaignStatus::Other(s) => s.clone(),
     }
 }
@@ -194,6 +193,7 @@ pub fn domain_to_meta_create_audience(input: &CreateAudienceInput) -> serde_json
 /// # Errors
 ///
 /// Returns [`MktError::ApiError`] if the response structure is unexpected.
+#[allow(clippy::unnecessary_wraps)] // Result kept for API consistency with other mapping fns
 pub fn meta_insights_to_domain(resp: &serde_json::Value) -> Result<InsightsReport> {
     let rows: Vec<InsightsRow> = resp["data"]
         .as_array()
@@ -393,6 +393,7 @@ fn merge_json(body: &mut serde_json::Value, extra: &serde_json::Value) {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

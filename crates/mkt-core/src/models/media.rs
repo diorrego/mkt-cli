@@ -146,6 +146,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn media_asset_id_serde_roundtrip() {
         let id = MediaAssetId("media_789".into());
         let json = serde_json::to_string(&id).expect("serialize MediaAssetId");
@@ -155,6 +156,7 @@ mod tests {
 
     #[test_case(MediaType::Image, "image" ; "image")]
     #[test_case(MediaType::Video, "video" ; "video")]
+    #[allow(clippy::needless_pass_by_value)]
     fn media_type_display(media_type: MediaType, expected: &str) {
         assert_eq!(media_type.to_string(), expected);
     }
@@ -166,6 +168,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn media_type_serde_roundtrip() {
         let json = serde_json::to_string(&MediaType::Image).expect("serialize");
         assert_eq!(json, r#""image""#);
@@ -174,6 +177,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn unknown_media_type_deserializes_as_other() {
         let t: MediaType = serde_json::from_str(r#""document""#).expect("deserialize");
         assert_eq!(t, MediaType::Other("document".into()));
@@ -198,6 +202,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn upload_image_input_skips_none_fields() {
         let input = UploadImageInput {
             file_path: Some("/tmp/image.png".into()),
@@ -210,6 +215,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn upload_video_input_serde_roundtrip() {
         let input = UploadVideoInput {
             file_path: None,
@@ -231,6 +237,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn media_asset_optional_fields_skip_serializing_if_none() {
         let now = chrono::Utc::now();
         let asset = MediaAsset {

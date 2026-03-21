@@ -46,10 +46,11 @@ pub struct Audience {
 }
 
 /// The classification of an audience.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AudienceType {
     /// Custom audience built from first-party data.
+    #[default]
     Custom,
     /// Lookalike audience derived from a seed audience.
     Lookalike,
@@ -57,12 +58,6 @@ pub enum AudienceType {
     SavedAudience,
     /// Platform-specific type not mapped to a known variant.
     Other(String),
-}
-
-impl Default for AudienceType {
-    fn default() -> Self {
-        Self::Custom
-    }
 }
 
 impl fmt::Display for AudienceType {
@@ -144,7 +139,7 @@ impl crate::output::Formattable for Audience {
             self.id.to_string(),
             self.name.clone(),
             self.audience_type.to_string(),
-            self.size.map_or("-".to_string(), |s| s.to_string()),
+            self.size.map_or_else(|| "-".to_string(), |s| s.to_string()),
             self.provider.clone(),
         ]
     }
@@ -168,6 +163,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn audience_id_serde_roundtrip() {
         let id = AudienceId("aud_789".into());
         let json = serde_json::to_string(&id).expect("serialize AudienceId");
@@ -178,6 +174,7 @@ mod tests {
     #[test_case(AudienceType::Custom, "custom" ; "custom")]
     #[test_case(AudienceType::Lookalike, "lookalike" ; "lookalike")]
     #[test_case(AudienceType::SavedAudience, "saved_audience" ; "saved_audience")]
+    #[allow(clippy::needless_pass_by_value)]
     fn audience_type_display(audience_type: AudienceType, expected: &str) {
         assert_eq!(audience_type.to_string(), expected);
     }
@@ -189,6 +186,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn audience_type_serde_roundtrip() {
         let json = serde_json::to_string(&AudienceType::Lookalike).expect("serialize");
         assert_eq!(json, r#""lookalike""#);
@@ -197,6 +195,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn unknown_audience_type_deserializes_as_other() {
         let t: AudienceType =
             serde_json::from_str(r#""website_retargeting""#).expect("deserialize");
@@ -221,6 +220,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn audience_update_result_serde_roundtrip() {
         let result = AudienceUpdateResult {
             audience_id: AudienceId("aud_1".into()),
@@ -236,6 +236,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn audience_optional_fields_skip_serializing_if_none() {
         let now = chrono::Utc::now();
         let audience = Audience {

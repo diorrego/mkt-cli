@@ -119,11 +119,13 @@ mod tests {
     #[test_case(InsightsLevel::Campaign, "campaign" ; "campaign")]
     #[test_case(InsightsLevel::AdSet, "ad_set" ; "adset")]
     #[test_case(InsightsLevel::Ad, "ad" ; "ad")]
+    #[allow(clippy::needless_pass_by_value)]
     fn insights_level_display(level: InsightsLevel, expected: &str) {
         assert_eq!(level.to_string(), expected);
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn insights_level_serde_roundtrip() {
         let json = serde_json::to_string(&InsightsLevel::Campaign).expect("serialize");
         assert_eq!(json, r#""campaign""#);
@@ -132,6 +134,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn insights_level_adset_serde_roundtrip() {
         let json = serde_json::to_string(&InsightsLevel::AdSet).expect("serialize");
         assert_eq!(json, r#""ad_set""#);
@@ -151,6 +154,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn insights_query_serde_roundtrip() {
         let query = InsightsQuery {
             date_range: None,
@@ -169,6 +173,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn metric_value_serde_roundtrip() {
         let mv = MetricValue {
             value: 1234.56,
@@ -181,6 +186,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn metric_value_skips_none_formatted() {
         let mv = MetricValue {
             value: 42.0,
@@ -191,6 +197,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn insights_row_serde_roundtrip() {
         let mut dimensions = HashMap::new();
         dimensions.insert("age".into(), "25-34".into());
@@ -216,6 +223,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn insights_report_skips_none_fields() {
         let report = InsightsReport {
             provider: "meta".into(),

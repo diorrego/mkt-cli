@@ -22,6 +22,7 @@ use crate::models::{
 /// Used by the CLI to show/hide commands dynamically and to provide
 /// helpful error messages when a user tries an unsupported feature.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)] // capability flags are inherently boolean
 pub struct ProviderCapabilities {
     /// Supports campaign CRUD.
     pub campaigns: bool,

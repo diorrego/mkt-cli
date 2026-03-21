@@ -1,6 +1,6 @@
 //! Post command handlers.
 
-use mkt_core::error::Result;
+use mkt_core::error::{MktError, Result};
 use mkt_core::output::{OutputFormat, format_output};
 use mkt_core::provider::MarketingProvider;
 
@@ -37,7 +37,7 @@ pub async fn execute(
             if dry_run {
                 return Ok(format!("[dry-run] Would promote post {id}"));
             }
-            Ok("Post promotion is not yet fully implemented.".into())
+            Err(MktError::not_supported(provider.name(), "promote_post"))
         }
     }
 }

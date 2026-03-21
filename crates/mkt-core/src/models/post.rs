@@ -129,6 +129,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn post_id_serde_roundtrip() {
         let id = PostId("post_789".into());
         let json = serde_json::to_string(&id).expect("serialize PostId");
@@ -148,6 +149,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn publish_post_input_skips_none_fields() {
         let input = PublishPostInput {
             platform: "facebook".into(),
@@ -165,6 +167,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn promote_post_input_serde_roundtrip() {
         use super::super::common::{Budget, BudgetKind};
         let input = PromotePostInput {
@@ -186,6 +189,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn post_optional_fields_skip_serializing_if_none() {
         let now = chrono::Utc::now();
         let post = Post {

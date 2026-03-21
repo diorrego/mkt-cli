@@ -120,6 +120,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn budget_kind_serde_roundtrip() {
         let json = serde_json::to_string(&BudgetKind::Daily).expect("serialize");
         assert_eq!(json, r#""daily""#);
@@ -135,6 +136,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn http_method_serde_roundtrip() {
         let json = serde_json::to_string(&HttpMethod::Post).expect("serialize");
         assert_eq!(json, r#""POST""#);
@@ -143,6 +145,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn provider_health_serializes_without_none_message() {
         let health = ProviderHealth {
             provider: "meta".into(),
