@@ -20,12 +20,12 @@ Marketing teams juggle multiple ad platforms daily, each with its own dashboard,
 
 ## Supported Platforms
 
-| Platform | Status |
-|----------|--------|
-| Meta (Facebook/Instagram) | Available |
-| Google Ads | Coming soon |
-| TikTok for Business | Coming soon |
-| LinkedIn Marketing | Coming soon |
+| Platform | Status | Domains |
+|----------|--------|---------|
+| Meta (Facebook/Instagram) | Available | campaign, adset, audience, insight, post, creative, media, raw |
+| Google Ads | Available | campaign, insight |
+| TikTok for Business | Available | campaign, audience, insight |
+| LinkedIn Marketing | Available | campaign, insight |
 
 ## Installation
 
@@ -111,9 +111,9 @@ Global flags:
 
 Providers:
   meta                 Meta (Facebook / Instagram)
-  google               Google Ads
-  tiktok               TikTok for Business
-  linkedin             LinkedIn Marketing
+  google               Google Ads (REST v24, GAQL)
+  tiktok               TikTok for Business (API v1.3)
+  linkedin             LinkedIn Marketing (versioned REST)
 
 Domains:
   campaign             Campaign management (list, get, create, update, delete)
@@ -127,9 +127,11 @@ Domains:
 
 Meta-commands:
   mkt providers        List available providers
-  mkt doctor           Verify config and connectivity
+  mkt doctor           Verify config, credentials, and connectivity
   mkt profile list     List configured profiles
   mkt profile show     Show profile details
+  mkt completions      Generate shell completions (bash, zsh, fish, ...)
+  mkt mcp serve        MCP server over stdio (Claude Desktop / ChatGPT)
 ```
 
 ## For coding agents
@@ -147,9 +149,9 @@ mkt is built as a Cargo workspace with clear separation of concerns:
 - **mkt-core**: Traits, domain models, config, output formatting, rate limiting
 - **mkt-cli**: CLI definitions, command dispatch, the binary itself
 - **mkt-meta**: Meta provider (Graph API, Marketing API, Pages API, Instagram API)
-- **mkt-google**: Google Ads provider (in development)
-- **mkt-tiktok**: TikTok provider (in development)
-- **mkt-linkedin**: LinkedIn provider (in development)
+- **mkt-google**: Google Ads provider (REST v24: GAQL search + mutate, OAuth2 refresh)
+- **mkt-tiktok**: TikTok provider (Business API v1.3: campaigns, reporting, DMP audiences)
+- **mkt-linkedin**: LinkedIn provider (versioned REST: Rest.li finders, PARTIAL_UPDATE, adAnalytics)
 - **mkt-testkit**: Shared test utilities, mocks, fixtures
 
 Every platform implements the `MarketingProvider` trait from `mkt-core`, which means adding a new provider is just implementing that trait and registering it.

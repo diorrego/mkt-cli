@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TikTok for Business provider (API v1.3): campaign CRUD, integrated
+  reporting, DMP audience listing; envelope error contract (40100 ->
+  transient rate limit, 401xx -> auth)
+- LinkedIn Marketing provider (versioned REST 202605): campaign CRUD via
+  Rest.li finders and PARTIAL_UPDATE patches, adAnalytics insights,
+  soft delete via PENDING_DELETION
+- MCP server (`mkt mcp serve`): stdio Model Context Protocol server with
+  six consolidated tools for chat agents; campaigns always created paused
+- `mkt completions <shell>` for bash/zsh/fish/powershell/elvish
+- `mkt doctor` now reports per-provider credential presence (never values)
+- `--extra` JSON flag on campaign create for provider-specific fields
 - Google Ads provider (REST v24): campaign CRUD via GAQL + mutate endpoints,
   insights with `costMicros` conversion, OAuth2 refresh-token exchange,
   `mkt google campaign|insight` commands (enabled by default)

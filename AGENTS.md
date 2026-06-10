@@ -10,7 +10,7 @@ contract: command shape, output formats, exit codes, and safety rules.
 mkt [global flags] <provider> <domain> <action> [flags]
 ```
 
-- Providers: `meta` (available), `google` / `tiktok` / `linkedin` (in development).
+- Providers: `meta`, `google`, `tiktok`, `linkedin` — all available.
 - Domains: `campaign`, `adset`, `audience`, `insight`, `post`, `creative`, `media`, `raw`.
 - Meta-commands: `mkt providers`, `mkt doctor`, `mkt profile list|show|set`.
 - Every command and subcommand has `--help` with examples. Discovery is a
@@ -63,8 +63,19 @@ mkt [global flags] <provider> <domain> <action> [flags]
 Environment variables take precedence over the config file:
 
 ```bash
-export MKT_META_ACCESS_TOKEN="..."     # Meta system-user token
+# Meta
+export MKT_META_ACCESS_TOKEN="..."          # system-user token
 export MKT_META_AD_ACCOUNT_ID="act_123456789"
+# Google Ads
+export MKT_GOOGLE_ACCESS_TOKEN="..."        # or refresh-token trio in config.toml
+export MKT_GOOGLE_DEVELOPER_TOKEN="..."
+export MKT_GOOGLE_CUSTOMER_ID="1234567890"
+# TikTok
+export MKT_TIKTOK_ACCESS_TOKEN="..."
+export MKT_TIKTOK_ADVERTISER_ID="7106541027904733185"
+# LinkedIn
+export MKT_LINKEDIN_ACCESS_TOKEN="..."
+export MKT_LINKEDIN_AD_ACCOUNT_ID="506333826"
 ```
 
 Or `~/.config/mkt/config.toml` (override dir with `MKT_CONFIG_DIR`):
@@ -111,6 +122,25 @@ mkt --output json meta insight get --range 7d --metrics impressions,clicks,spend
 mkt meta raw get "act_123/campaigns" --fields id,name,status
 mkt meta raw post "act_123/campaigns" --body '{"name":"X","objective":"OUTCOME_TRAFFIC","special_ad_categories":[]}'
 ```
+
+## Cross-platform notes
+
+- `--objective` is platform-native: Meta `OUTCOME_*`, Google channel types
+  (`SEARCH`, `PERFORMANCE_MAX`), TikTok (`TRAFFIC`, `LEAD_GENERATION`),
+  LinkedIn (`LEAD_GENERATION`, `WEBSITE_VISIT`).
+- Google and LinkedIn require `--daily-budget` on create; LinkedIn also
+  requires `--extra '{"campaignGroup":"urn:li:sponsoredCampaignGroup:<id>"}'`.
+- Deletes are soft on every platform (status transitions). TikTok's DELETE
+  is irreversible.
+- All `create` commands default to a paused state across all platforms.
+
+## MCP server (optional)
+
+For chat environments without a terminal (Claude Desktop, ChatGPT):
+`mkt mcp serve` speaks MCP over stdio with six consolidated tools
+(campaign_list/get/create/set_status, insights_get, provider_health).
+Coding agents with shell access should use the CLI directly — it is
+faster, cheaper in tokens, and exposes every capability.
 
 ## Development
 
