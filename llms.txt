@@ -1,0 +1,23 @@
+# mkt
+
+> Multi-platform marketing CLI in Rust: manage ads, ad sets, audiences,
+> organic posts, and analytics across Meta (Facebook/Instagram), Google Ads,
+> TikTok, and LinkedIn from one terminal. Built agent-first: stable JSON
+> output on stdout, structured JSON errors on stderr, documented exit codes
+> (0-7), --dry-run on every mutating command, fully non-interactive.
+
+Command shape: `mkt [global flags] <provider> <domain> <action> [flags]`.
+Start with `mkt --help` (includes the exit-code table) and `mkt doctor`
+(validates credentials). Auth via MKT_META_ACCESS_TOKEN / config.toml.
+
+## Docs
+
+- [Agent guide](AGENTS.md): output formats, exit codes, safety rules, recipes
+- [README](README.md): installation, quick start, command reference
+- [Project spec](dev/MKT_PROJECT_SPEC.md): architecture and roadmap
+- [Contributing](CONTRIBUTING.md): development workflow
+
+## Optional
+
+- [Changelog](CHANGELOG.md): release history
+- [Security policy](SECURITY.md): reporting vulnerabilities

@@ -117,9 +117,10 @@ Providers:
 
 Domains:
   campaign             Campaign management (list, get, create, update, delete)
-  audience             Audience management (list, create)
+  adset                Ad set management (list, create)
+  audience             Audience management (list, create, add-users)
   insight              Analytics and reporting (get)
-  post                 Organic posts (create, promote)
+  post                 Organic posts (create, promote into an ad set)
   creative             Ad creatives (create, dark-post)
   media                Media assets (upload-image, upload-video)
   raw                  Direct API access (get, post)
@@ -130,6 +131,14 @@ Meta-commands:
   mkt profile list     List configured profiles
   mkt profile show     Show profile details
 ```
+
+## For coding agents
+
+`mkt` is designed to be driven by AI coding agents (Claude Code, Codex, Cursor)
+the same way they use the AWS or GitHub CLIs: machine-readable JSON on stdout,
+structured JSON errors on stderr, a stable exit-code contract (0-7), `--dry-run`
+on every mutating command, and zero interactive prompts. See [AGENTS.md](AGENTS.md)
+for the full operating contract and recipes.
 
 ## Architecture
 
