@@ -5,4 +5,5 @@
 //! Fixtures are built with `serde_json::json!` so they are embedded at
 //! compile time and require no filesystem access at runtime.
 
+pub mod google;
 pub mod meta;

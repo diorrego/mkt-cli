@@ -1243,7 +1243,16 @@ dependencies = [
 name = "mkt-google"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "mkt-core",
+ "mkt-testkit",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]

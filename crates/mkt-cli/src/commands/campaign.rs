@@ -41,6 +41,7 @@ pub async fn execute(
             name,
             objective,
             status,
+            daily_budget,
             file: _,
         } => {
             if dry_run {
@@ -52,6 +53,11 @@ pub async fn execute(
                 name: name.clone(),
                 objective: objective.clone(),
                 status: status.as_deref().map(parse_status),
+                budget: daily_budget.map(|amount| mkt_core::models::Budget {
+                    amount,
+                    currency: "USD".into(),
+                    kind: mkt_core::models::BudgetKind::Daily,
+                }),
                 ..Default::default()
             };
             let campaign = provider.create_campaign(&input).await?;

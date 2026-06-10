@@ -94,7 +94,7 @@ pub enum Commands {
     Google {
         /// Domain subcommand.
         #[command(subcommand)]
-        domain: StubDomain,
+        domain: GoogleDomain,
     },
 
     /// TikTok for Business provider.
@@ -181,6 +181,27 @@ pub enum MetaDomain {
     },
 }
 
+/// Google Ads provider domain subcommands.
+#[cfg(feature = "google")]
+#[derive(Subcommand, Debug)]
+pub enum GoogleDomain {
+    /// Campaign management.
+    ///
+    /// For create, --objective is the advertising channel type
+    /// (SEARCH, DISPLAY, `PERFORMANCE_MAX`, VIDEO, ...).
+    Campaign {
+        /// Campaign action.
+        #[command(subcommand)]
+        action: CampaignAction,
+    },
+    /// Insights / analytics (GAQL metrics).
+    Insight {
+        /// Insight action.
+        #[command(subcommand)]
+        action: InsightAction,
+    },
+}
+
 /// Campaign actions.
 #[derive(Subcommand, Debug)]
 pub enum CampaignAction {
@@ -206,12 +227,15 @@ pub enum CampaignAction {
         /// Campaign name.
         #[arg(long)]
         name: String,
-        /// Campaign objective.
+        /// Campaign objective (Meta: OUTCOME_*, Google: channel type like SEARCH).
         #[arg(long)]
         objective: String,
         /// Initial status.
         #[arg(long)]
         status: Option<String>,
+        /// Daily budget in currency units (required for Google Ads).
+        #[arg(long)]
+        daily_budget: Option<f64>,
         /// Load from JSON file.
         #[arg(long)]
         file: Option<PathBuf>,

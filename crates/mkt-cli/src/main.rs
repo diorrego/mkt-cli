@@ -93,7 +93,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Meta { domain } => handle_meta(domain, &cli, output_format).await,
 
         #[cfg(feature = "google")]
-        Commands::Google { .. } => Ok("Google Ads provider is not yet implemented.".into()),
+        Commands::Google { domain } => handle_google(domain, &cli, output_format).await,
 
         #[cfg(feature = "tiktok")]
         Commands::Tiktok { .. } => Ok("TikTok provider is not yet implemented.".into()),
@@ -194,6 +194,92 @@ async fn handle_meta(
         }
         cli::MetaDomain::Media { action } => {
             commands::media::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+    }
+}
+
+#[cfg(feature = "google")]
+async fn handle_google(
+    domain: &cli::GoogleDomain,
+    cli: &Cli,
+    output_format: mkt_core::output::OutputFormat,
+) -> anyhow::Result<String> {
+    use mkt_core::config::MktConfig;
+    use mkt_core::error::MktError;
+
+    // Load config and resolve credentials.
+    let config = if let Some(path) = &cli.config {
+        MktConfig::load_from_file(path)?
+    } else {
+        MktConfig::load()?
+    };
+
+    let profile = config.profile(&cli.profile).ok();
+    let google_config = profile.and_then(|p| p.google.as_ref());
+
+    let developer_token = std::env::var("MKT_GOOGLE_DEVELOPER_TOKEN")
+        .ok()
+        .or_else(|| google_config.and_then(|c| c.developer_token.clone()))
+        .ok_or_else(|| {
+            MktError::auth_error(
+                "google",
+                "No developer token found. Set MKT_GOOGLE_DEVELOPER_TOKEN or configure it \
+                 in your profile.",
+            )
+        })?;
+
+    let customer_id = std::env::var("MKT_GOOGLE_CUSTOMER_ID")
+        .ok()
+        .or_else(|| google_config.and_then(|c| c.customer_id.clone()))
+        .ok_or_else(|| {
+            MktError::auth_error(
+                "google",
+                "No customer ID found. Set MKT_GOOGLE_CUSTOMER_ID or configure it in your \
+                 profile.",
+            )
+        })?;
+
+    // Access token: direct env var wins; otherwise exchange the refresh token.
+    let access_token = if let Ok(token) = std::env::var("MKT_GOOGLE_ACCESS_TOKEN") {
+        secrecy::SecretString::from(token)
+    } else {
+        let (client_id, client_secret, refresh_token) = google_config
+            .and_then(|c| {
+                Some((
+                    c.client_id.clone()?,
+                    c.client_secret.clone()?,
+                    c.refresh_token.clone()?,
+                ))
+            })
+            .ok_or_else(|| {
+                MktError::auth_error(
+                    "google",
+                    "No access token found. Set MKT_GOOGLE_ACCESS_TOKEN, or configure \
+                     client_id, client_secret, and refresh_token in your profile.",
+                )
+            })?;
+        mkt_google::fetch_access_token(
+            &client_id,
+            &client_secret,
+            &refresh_token,
+            mkt_google::GOOGLE_TOKEN_URL,
+        )
+        .await?
+    };
+
+    let client = mkt_google::GoogleClient::new(access_token, developer_token, &customer_id, None)?;
+    let provider = mkt_google::GoogleProvider::new(client);
+
+    match domain {
+        cli::GoogleDomain::Campaign { action } => {
+            commands::campaign::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+        cli::GoogleDomain::Insight { action } => {
+            commands::insight::execute(action, &provider, output_format)
                 .await
                 .map_err(anyhow::Error::from)
         }
