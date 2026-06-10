@@ -4,13 +4,17 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "TikTok for Business provider for the mkt marketing CLI"
 
 [lints]
 workspace = true
 
 [dependencies]
-mkt-core = { path = "../mkt-core" }
+mkt-cli-core = { path = "../mkt-core", version = "0.1.0" }
 chrono.workspace = true
 reqwest.workspace = true
 secrecy.workspace = true

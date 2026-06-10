@@ -1265,7 +1265,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
- "mkt-core",
+ "mkt-cli-core",
  "mkt-google",
  "mkt-linkedin",
  "mkt-meta",
@@ -1283,7 +1283,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mkt-core"
+name = "mkt-cli-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -1313,7 +1313,7 @@ name = "mkt-google"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "mkt-core",
+ "mkt-cli-core",
  "mkt-testkit",
  "reqwest",
  "secrecy",
@@ -1329,7 +1329,7 @@ name = "mkt-linkedin"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "mkt-core",
+ "mkt-cli-core",
  "mkt-testkit",
  "reqwest",
  "secrecy",
@@ -1346,7 +1346,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "insta",
- "mkt-core",
+ "mkt-cli-core",
  "mkt-testkit",
  "reqwest",
  "secrecy",
@@ -1365,7 +1365,7 @@ name = "mkt-testkit"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "mkt-core",
+ "mkt-cli-core",
  "reqwest",
  "serde_json",
  "tokio",
@@ -1377,7 +1377,7 @@ name = "mkt-tiktok"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "mkt-core",
+ "mkt-cli-core",
  "mkt-testkit",
  "reqwest",
  "secrecy",

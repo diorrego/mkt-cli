@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-10
+
+First public release: `cargo install mkt-cli` (binary `mkt`). The core
+library is published as `mkt-cli-core` (the `mkt-core` name was taken on
+crates.io); its library target is still `mkt_core`.
+
 ### Added
 
 - TikTok for Business provider (API v1.3): campaign CRUD, integrated
@@ -40,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default Meta Graph API version bumped from v24.0 to v25.0
 - `PromotePostInput` redesigned: promotion targets an existing ad set
   (budget/targeting live on the ad set, matching all platforms' semantics)
+
+### Initial scaffolding
 
 - Core workspace structure with 7 crates
 - `MarketingProvider` trait with full CRUD method signatures

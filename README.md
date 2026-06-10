@@ -159,6 +159,7 @@ for the full operating contract and recipes.
 mkt is built as a Cargo workspace with clear separation of concerns:
 
 - **mkt-core**: Traits, domain models, config, output formatting, rate limiting
+  (published on crates.io as `mkt-cli-core`; the lib target is still `mkt_core`)
 - **mkt-cli**: CLI definitions, command dispatch, the binary itself
 - **mkt-meta**: Meta provider (Graph API, Marketing API, Pages API, Instagram API)
 - **mkt-google**: Google Ads provider (REST v24: GAQL search + mutate, OAuth2 refresh)
