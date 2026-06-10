@@ -14,7 +14,7 @@ description = "LinkedIn Marketing provider for the mkt marketing CLI"
 workspace = true
 
 [dependencies]
-mkt-cli-core = { path = "../mkt-core", version = "0.1.0" }
+mkt-cli-core = { path = "../mkt-core", version = "0.1.1" }
 chrono.workspace = true
 reqwest.workspace = true
 secrecy.workspace = true

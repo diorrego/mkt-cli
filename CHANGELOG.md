@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-10
+
+### Added
+
+- Per-crate READMEs so every published crate has a proper crates.io page
+  (the library crates went out without one in 0.1.0)
+
 ## [0.1.0] - 2026-06-10
 
 First public release: `cargo install mkt-cli` (binary `mkt`). The core
