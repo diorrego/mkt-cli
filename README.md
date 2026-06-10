@@ -1,22 +1,25 @@
 # mkt
 
-A multi-platform marketing CLI written in Rust. Manage ads, audiences, organic posts, and analytics across Meta, Google Ads, TikTok, and LinkedIn from a single terminal.
+The ads CLI built for coding agents — and the humans who work with them. Free and open source (MIT / Apache-2.0), written in Rust. Manage ads, ad sets, audiences, organic posts, and analytics across **Meta, Google Ads, TikTok, and LinkedIn** from a single terminal.
+
+Claude Code, Codex, Cursor, or any agent with a shell can drive your ad operations with `mkt` the same way they use the AWS or GitHub CLIs: stable JSON output on stdout, structured errors on stderr, a documented exit-code contract, `--dry-run` everywhere, and zero interactive prompts.
 
 ## Why mkt?
 
-Marketing teams juggle multiple ad platforms daily, each with its own dashboard, API, and workflow. `mkt` brings all of them under one consistent command-line interface so you can script, automate, and manage campaigns without leaving the terminal.
+Marketing teams juggle multiple ad platforms daily, each with its own dashboard, API, and workflow. `mkt` brings all of them under one consistent command-line interface so you — or your coding agent — can script, automate, and manage campaigns without leaving the terminal. And because this tool spends real money, safety is the default: every campaign, ad set, and boosted post is **created paused**; starting delivery is always an explicit step.
 
 ## Features
 
 - Unified command structure across all platforms: `mkt <provider> <domain> <action>`
-- Campaign management (list, create, update, delete)
-- Audience creation and management
+- Campaign management on all four platforms (list, get, create, update, delete)
+- Meta ad sets, ad creatives, media upload, and post boosting
+- Audience management with local SHA-256 PII hashing before any upload
 - Organic post publishing (Facebook and Instagram)
-- Analytics and insights reporting
-- Multiple output formats (table, JSON, CSV)
-- Profile-based configuration for multiple accounts
-- Dry-run mode for safe testing
-- Rate limiting and retry logic built in
+- Unified analytics (cost always in currency units) as table, JSON, or CSV
+- Agent contract: stable exit codes (0-7), structured JSON errors with recovery hints
+- Spend safety: `--dry-run` on every mutating command; everything is created paused
+- MCP server (`mkt mcp serve`) for Claude Desktop / ChatGPT
+- Shell completions, profile-based multi-account config, built-in rate limiting
 
 ## Supported Platforms
 
@@ -72,28 +75,37 @@ mkt doctor
 ### 3. Start managing campaigns
 
 ```bash
-# List campaigns
+# List campaigns (works the same on meta, google, tiktok, linkedin)
 mkt meta campaign list
+mkt --output json google campaign list --status active
 
-# List only active campaigns as JSON
-mkt --output json meta campaign list --status active
-
-# Create a campaign
-mkt meta campaign create --name "Q1 Launch" --objective OUTCOME_LEADS
-
-# Preview without executing
+# Create campaigns — always paused until you activate them
 mkt --dry-run meta campaign create --name "Test" --objective OUTCOME_TRAFFIC
+mkt meta campaign create --name "Q1 Launch" --objective OUTCOME_LEADS
+mkt google campaign create --name "Brand" --objective SEARCH --daily-budget 50
+mkt tiktok campaign create --name "Spark" --objective TRAFFIC --daily-budget 50
 
-# Get insights for the last 7 days
-mkt meta insight get --account act_123456789 --range 7d
+# Meta ad sets and post boosting (boost ad is created PAUSED)
+mkt meta adset create --campaign <id> --name "US 25-55" --status paused \
+  --daily-budget 2500 --targeting '{"geo_locations":{"countries":["US"]}}'
+mkt meta post promote <post_id> --adset <adset_id>
+
+# Audiences — PII is SHA-256 hashed locally before upload
+mkt meta audience add-users <audience_id> --email a@example.com
+
+# Unified insights across platforms
+mkt meta insight get --range 7d --metrics impressions,clicks,spend
+mkt --output csv linkedin insight get
 
 # Publish an Instagram post
 mkt meta post create --platform instagram \
-  --image-url "https://cdn.example.com/photo.jpg" \
-  --caption "New product launch"
+  --image-url "https://cdn.example.com/photo.jpg" --message "New product launch"
 
 # Raw API access when you need it
-mkt meta raw get "act_123/campaigns" --params '{"fields":"id,name,status"}'
+mkt meta raw get "act_123/campaigns" --fields id,name,status
+
+# MCP server for chat agents without a terminal
+mkt mcp serve
 ```
 
 ## Command Reference
