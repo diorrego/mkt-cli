@@ -2,12 +2,15 @@
 
 mod cli;
 mod commands;
+#[cfg(feature = "mcp")]
+mod mcp;
+mod providers;
 
 use clap::Parser;
 
 use cli::{Cli, Commands};
 
-fn main() -> anyhow::Result<()> {
+fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
 
     // Initialize tracing
@@ -18,17 +21,64 @@ fn main() -> anyhow::Result<()> {
     } else {
         "info"
     };
+    // Diagnostics always go to stderr: stdout is reserved for data
+    // (and for the MCP protocol when serving).
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
+        .with_writer(std::io::stderr)
         .init();
 
     // Build tokio runtime
-    let rt = tokio::runtime::Builder::new_multi_thread()
+    let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()?;
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("error: failed to start async runtime: {e}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
 
-    rt.block_on(run(cli))
+    let emit_json_errors = matches!(cli.output, cli::OutputFormatArg::Json);
+    match rt.block_on(run(cli)) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => report_error(&e, emit_json_errors),
+    }
+}
+
+/// Print an error to stderr (structured JSON when `--output json`) and
+/// translate it into the documented exit code contract.
+fn report_error(error: &anyhow::Error, as_json: bool) -> std::process::ExitCode {
+    use mkt_core::error::MktError;
+
+    let mkt_error = error.downcast_ref::<MktError>();
+    let exit_code = mkt_error.map_or(1, MktError::exit_code);
+
+    if as_json {
+        let mut err_obj = serde_json::json!({
+            "type": mkt_error.map_or("unexpected_error", |e| e.error_type()),
+            "message": error.to_string(),
+        });
+        if let Some(e) = mkt_error {
+            if let Some(suggestion) = e.suggestion() {
+                err_obj["suggestion"] = serde_json::Value::String(suggestion);
+            }
+            if e.is_transient() {
+                err_obj["transient"] = serde_json::Value::Bool(true);
+            }
+        }
+        let envelope = serde_json::json!({ "ok": false, "error": err_obj });
+        eprintln!("{envelope}");
+    } else {
+        eprintln!("error: {error}");
+        if let Some(suggestion) = mkt_error.and_then(MktError::suggestion) {
+            eprintln!("hint: {suggestion}");
+        }
+    }
+
+    std::process::ExitCode::from(exit_code)
 }
 
 async fn run(cli: Cli) -> anyhow::Result<()> {
@@ -45,22 +95,38 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             commands::profile::execute(action).map_err(anyhow::Error::from)
         }
 
+        Commands::Completions { shell } => {
+            use clap::CommandFactory;
+            let mut cmd = Cli::command();
+            let mut buf = Vec::new();
+            clap_complete::generate(*shell, &mut cmd, "mkt", &mut buf);
+            Ok(String::from_utf8_lossy(&buf).into_owned())
+        }
+
+        #[cfg(feature = "mcp")]
+        Commands::Mcp { action } => match action {
+            cli::McpAction::Serve => {
+                mcp::serve(cli.profile.clone()).await?;
+                Ok(String::new())
+            }
+        },
+
         #[cfg(feature = "meta")]
         Commands::Meta { domain } => handle_meta(domain, &cli, output_format).await,
 
         #[cfg(feature = "google")]
-        Commands::Google { .. } => Ok("Google Ads provider is not yet implemented.".into()),
+        Commands::Google { domain } => handle_google(domain, &cli, output_format).await,
 
         #[cfg(feature = "tiktok")]
-        Commands::Tiktok { .. } => Ok("TikTok provider is not yet implemented.".into()),
+        Commands::Tiktok { domain } => handle_tiktok(domain, &cli, output_format).await,
 
         #[cfg(feature = "linkedin")]
-        Commands::Linkedin { .. } => Ok("LinkedIn provider is not yet implemented.".into()),
+        Commands::Linkedin { domain } => handle_linkedin(domain, &cli, output_format).await,
     };
 
     match result {
         Ok(output) => {
-            if !cli.quiet {
+            if !cli.quiet && !output.is_empty() {
                 println!("{output}");
             }
             Ok(())
@@ -75,46 +141,8 @@ async fn handle_meta(
     cli: &Cli,
     output_format: mkt_core::output::OutputFormat,
 ) -> anyhow::Result<String> {
-    use mkt_core::auth;
-    use mkt_core::config::MktConfig;
-    use secrecy::ExposeSecret;
-
-    // Load config and resolve token
-    let config = if let Some(path) = &cli.config {
-        MktConfig::load_from_file(path)?
-    } else {
-        MktConfig::load()?
-    };
-
-    let profile = config.profile(&cli.profile).ok();
-    let meta_config = profile.and_then(|p| p.meta.as_ref());
-
-    let token = auth::resolve_token(
-        "meta",
-        "MKT_META_ACCESS_TOKEN",
-        meta_config.and_then(|c| c.access_token.as_deref()),
-    )?;
-
-    let ad_account_id = meta_config
-        .and_then(|c| c.ad_account_id.clone())
-        .or_else(|| std::env::var("MKT_META_AD_ACCOUNT_ID").ok())
-        .unwrap_or_else(|| "act_unknown".to_string());
-
-    let api_version = meta_config
-        .and_then(|c| c.api_version.as_deref())
-        .unwrap_or("v24.0");
-
-    let client = mkt_meta::MetaClient::new(
-        secrecy::SecretString::from(token.expose_secret().to_string()),
-        ad_account_id,
-        Some(api_version),
-    )?;
-
-    let provider = mkt_meta::MetaProvider::new(
-        client,
-        meta_config.and_then(|c| c.page_id.clone()),
-        meta_config.and_then(|c| c.ig_user_id.clone()),
-    );
+    let config = providers::load_config(cli.config.as_deref())?;
+    let provider = providers::build_meta(&config, &cli.profile)?;
 
     match domain {
         cli::MetaDomain::Campaign { action } => {
@@ -122,9 +150,14 @@ async fn handle_meta(
                 .await
                 .map_err(anyhow::Error::from)
         }
+        cli::MetaDomain::Adset { action } => {
+            commands::adset::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
         cli::MetaDomain::Raw { action } => handle_meta_raw(action, &provider).await,
         cli::MetaDomain::Audience { action } => {
-            commands::audience::execute(action, &provider, output_format)
+            commands::audience::execute(action, &provider, output_format, cli.dry_run)
                 .await
                 .map_err(anyhow::Error::from)
         }
@@ -145,6 +178,80 @@ async fn handle_meta(
         }
         cli::MetaDomain::Media { action } => {
             commands::media::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+    }
+}
+
+#[cfg(feature = "google")]
+async fn handle_google(
+    domain: &cli::GoogleDomain,
+    cli: &Cli,
+    output_format: mkt_core::output::OutputFormat,
+) -> anyhow::Result<String> {
+    let config = providers::load_config(cli.config.as_deref())?;
+    let provider = providers::build_google(&config, &cli.profile).await?;
+
+    match domain {
+        cli::GoogleDomain::Campaign { action } => {
+            commands::campaign::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+        cli::GoogleDomain::Insight { action } => {
+            commands::insight::execute(action, &provider, output_format)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+    }
+}
+
+#[cfg(feature = "tiktok")]
+async fn handle_tiktok(
+    domain: &cli::TiktokDomain,
+    cli: &Cli,
+    output_format: mkt_core::output::OutputFormat,
+) -> anyhow::Result<String> {
+    let config = providers::load_config(cli.config.as_deref())?;
+    let provider = providers::build_tiktok(&config, &cli.profile)?;
+
+    match domain {
+        cli::TiktokDomain::Campaign { action } => {
+            commands::campaign::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+        cli::TiktokDomain::Audience { action } => {
+            commands::audience::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+        cli::TiktokDomain::Insight { action } => {
+            commands::insight::execute(action, &provider, output_format)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+    }
+}
+
+#[cfg(feature = "linkedin")]
+async fn handle_linkedin(
+    domain: &cli::LinkedinDomain,
+    cli: &Cli,
+    output_format: mkt_core::output::OutputFormat,
+) -> anyhow::Result<String> {
+    let config = providers::load_config(cli.config.as_deref())?;
+    let provider = providers::build_linkedin(&config, &cli.profile)?;
+
+    match domain {
+        cli::LinkedinDomain::Campaign { action } => {
+            commands::campaign::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+        cli::LinkedinDomain::Insight { action } => {
+            commands::insight::execute(action, &provider, output_format)
                 .await
                 .map_err(anyhow::Error::from)
         }

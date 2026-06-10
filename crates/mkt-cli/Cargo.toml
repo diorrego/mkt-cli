@@ -22,6 +22,9 @@ mkt-linkedin = { path = "../mkt-linkedin", optional = true }
 anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
+clap_complete.workspace = true
+rmcp = { workspace = true, optional = true }
+serde.workspace = true
 secrecy.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
@@ -35,9 +38,10 @@ predicates.workspace = true
 mkt-testkit = { path = "../mkt-testkit" }
 
 [features]
-default = ["meta"]
+default = ["meta", "google", "tiktok", "linkedin", "mcp"]
 meta = ["dep:mkt-meta"]
 google = ["dep:mkt-google"]
 tiktok = ["dep:mkt-tiktok"]
 linkedin = ["dep:mkt-linkedin"]
-full = ["meta", "google", "tiktok", "linkedin"]
+mcp = ["dep:rmcp"]
+full = ["meta", "google", "tiktok", "linkedin", "mcp"]

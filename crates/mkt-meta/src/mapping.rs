@@ -9,14 +9,23 @@ use std::collections::HashMap;
 
 use mkt_core::error::{MktError, Result};
 use mkt_core::models::{
-    Audience, AudienceId, AudienceType, Budget, BudgetKind, Campaign, CampaignId, CampaignStatus,
-    CreateAudienceInput, CreateCampaignInput, InsightsReport, InsightsRow, MetricValue, Post,
-    PostId, UpdateCampaignInput,
+    Ad, AdId, AdSet, AdSetId, AdSetStatus, AdStatus, Audience, AudienceId, AudienceType,
+    AudienceUser, Budget, BudgetKind, Campaign, CampaignId, CampaignStatus, CreateAdSetInput,
+    CreateAudienceInput, CreateCampaignInput, CreativeId, InsightsReport, InsightsRow, MetricValue,
+    Post, PostId, UpdateCampaignInput,
 };
+use mkt_core::pii;
 
 /// The set of fields requested from the campaigns endpoint.
 pub const CAMPAIGN_FIELDS: &str = "id,name,status,objective,daily_budget,lifetime_budget,\
      created_time,updated_time";
+
+/// The set of fields requested from the adsets endpoint.
+pub const ADSET_FIELDS: &str = "id,campaign_id,name,status,targeting,daily_budget,\
+     lifetime_budget,billing_event,optimization_goal,created_time,updated_time";
+
+/// The set of fields requested from the ads endpoint.
+pub const AD_FIELDS: &str = "id,adset_id,name,status,creative,created_time,updated_time";
 
 // ── Status mapping ─────────────────────────────────────────
 
@@ -114,6 +123,178 @@ pub fn domain_to_meta_update_campaign(input: &UpdateCampaignInput) -> serde_json
     }
 
     body
+}
+
+// ── Ad Sets ───────────────────────────────────────────────
+
+/// Map a Meta API uppercase ad set status string to a domain status.
+pub fn meta_adset_status_to_domain(status: &str) -> AdSetStatus {
+    match status {
+        "ACTIVE" => AdSetStatus::Active,
+        "PAUSED" => AdSetStatus::Paused,
+        "ARCHIVED" => AdSetStatus::Archived,
+        "DELETED" => AdSetStatus::Deleted,
+        other => AdSetStatus::Other(other.to_string()),
+    }
+}
+
+/// Map a domain ad set status back to the Meta API uppercase string.
+pub fn domain_adset_status_to_meta(status: &AdSetStatus) -> String {
+    match status {
+        AdSetStatus::Active => "ACTIVE".to_string(),
+        AdSetStatus::Paused => "PAUSED".to_string(),
+        AdSetStatus::Archived => "ARCHIVED".to_string(),
+        AdSetStatus::Deleted => "DELETED".to_string(),
+        AdSetStatus::Other(s) => s.clone(),
+    }
+}
+
+/// Convert a raw Graph API ad set JSON object into a domain [`AdSet`].
+///
+/// # Errors
+///
+/// Returns [`MktError::ApiError`] if required fields (`id`, `name`,
+/// `campaign_id`) are missing from the response.
+pub fn meta_adset_to_domain(raw: &serde_json::Value) -> Result<AdSet> {
+    let id = extract_str(raw, "id")?;
+    let name = extract_str(raw, "name")?;
+    let campaign_id = extract_str(raw, "campaign_id")?;
+    let status_str = raw["status"].as_str().unwrap_or("UNKNOWN");
+
+    let targeting = raw.get("targeting").filter(|t| !t.is_null()).cloned();
+    let budget = parse_budget(raw);
+    let created_at = parse_datetime(raw, "created_time")?;
+    let updated_at = parse_optional_datetime(raw, "updated_time");
+
+    Ok(AdSet {
+        id: AdSetId(id),
+        provider: "meta".to_string(),
+        campaign_id: CampaignId(campaign_id),
+        name,
+        status: meta_adset_status_to_domain(status_str),
+        targeting,
+        budget,
+        created_at,
+        updated_at,
+        raw: Some(raw.clone()),
+    })
+}
+
+/// Build the JSON body for a Meta create-adset request.
+pub fn domain_to_meta_create_adset(input: &CreateAdSetInput) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "campaign_id": input.campaign_id.0,
+        "name": input.name,
+    });
+
+    if let Some(status) = &input.status {
+        body["status"] = serde_json::Value::String(domain_adset_status_to_meta(status));
+    }
+
+    if let Some(targeting) = &input.targeting {
+        body["targeting"] = targeting.clone();
+    }
+
+    apply_budget(&mut body, input.budget.as_ref());
+
+    if let Some(extra) = &input.extra {
+        merge_json(&mut body, extra);
+    }
+
+    body
+}
+
+// ── Ads ───────────────────────────────────────────────────
+
+/// Map a Meta API uppercase ad status string to a domain status.
+pub fn meta_ad_status_to_domain(status: &str) -> AdStatus {
+    match status {
+        "ACTIVE" => AdStatus::Active,
+        "PAUSED" => AdStatus::Paused,
+        "ARCHIVED" => AdStatus::Archived,
+        "DELETED" => AdStatus::Deleted,
+        other => AdStatus::Other(other.to_string()),
+    }
+}
+
+/// Convert a raw Graph API ad JSON object into a domain [`Ad`].
+///
+/// # Errors
+///
+/// Returns [`MktError::ApiError`] if required fields (`id`, `name`,
+/// `adset_id`) are missing from the response.
+pub fn meta_ad_to_domain(raw: &serde_json::Value) -> Result<Ad> {
+    let id = extract_str(raw, "id")?;
+    let name = extract_str(raw, "name")?;
+    let adset_id = extract_str(raw, "adset_id")?;
+    let status_str = raw["status"].as_str().unwrap_or("UNKNOWN");
+
+    let creative_id = raw["creative"]["id"]
+        .as_str()
+        .map(|s| CreativeId(s.to_string()));
+    let created_at = parse_datetime(raw, "created_time")?;
+    let updated_at = parse_optional_datetime(raw, "updated_time");
+
+    Ok(Ad {
+        id: AdId(id),
+        provider: "meta".to_string(),
+        adset_id: AdSetId(adset_id),
+        name,
+        status: meta_ad_status_to_domain(status_str),
+        creative_id,
+        created_at,
+        updated_at,
+        raw: Some(raw.clone()),
+    })
+}
+
+// ── Audience user upload ──────────────────────────────────
+
+/// Build the `payload` body for a Meta `POST /{audience_id}/users` request.
+///
+/// Identifiers are normalized and SHA-256 hashed per Meta's customer file
+/// requirements ([`mkt_core::pii`]). The schema only includes columns for
+/// which at least one user has a value; missing cells are empty strings.
+/// `EXTERN_ID` values are not hashed, per the Meta contract.
+pub fn domain_users_to_meta_payload(users: &[AudienceUser]) -> serde_json::Value {
+    let has_email = users.iter().any(|u| u.email.is_some());
+    let has_phone = users.iter().any(|u| u.phone.is_some());
+    let has_extern = users.iter().any(|u| u.external_id.is_some());
+
+    let mut schema: Vec<&str> = Vec::new();
+    if has_email {
+        schema.push("EMAIL");
+    }
+    if has_phone {
+        schema.push("PHONE");
+    }
+    if has_extern {
+        schema.push("EXTERN_ID");
+    }
+
+    let data: Vec<Vec<String>> = users
+        .iter()
+        .map(|u| {
+            let mut row = Vec::new();
+            if has_email {
+                row.push(u.email.as_deref().map(pii::hash_email).unwrap_or_default());
+            }
+            if has_phone {
+                row.push(u.phone.as_deref().map(pii::hash_phone).unwrap_or_default());
+            }
+            if has_extern {
+                row.push(u.external_id.clone().unwrap_or_default());
+            }
+            row
+        })
+        .collect();
+
+    serde_json::json!({
+        "payload": {
+            "schema": schema,
+            "data": data,
+        }
+    })
 }
 
 // ── Audiences ─────────────────────────────────────────────
@@ -493,6 +674,146 @@ mod tests {
         let body = domain_to_meta_update_campaign(&input);
         assert_eq!(body["name"], "Renamed");
         assert!(body.get("status").is_none());
+    }
+
+    // ── Ad set mapping tests ───────────────────────────────
+
+    #[test]
+    fn test_meta_adset_status_to_domain() {
+        assert_eq!(meta_adset_status_to_domain("ACTIVE"), AdSetStatus::Active);
+        assert_eq!(meta_adset_status_to_domain("PAUSED"), AdSetStatus::Paused);
+        assert_eq!(
+            meta_adset_status_to_domain("ARCHIVED"),
+            AdSetStatus::Archived
+        );
+        assert_eq!(meta_adset_status_to_domain("DELETED"), AdSetStatus::Deleted);
+        assert_eq!(
+            meta_adset_status_to_domain("IN_PROCESS"),
+            AdSetStatus::Other("IN_PROCESS".into())
+        );
+    }
+
+    #[test]
+    fn test_domain_adset_status_to_meta() {
+        assert_eq!(domain_adset_status_to_meta(&AdSetStatus::Active), "ACTIVE");
+        assert_eq!(domain_adset_status_to_meta(&AdSetStatus::Paused), "PAUSED");
+        assert_eq!(
+            domain_adset_status_to_meta(&AdSetStatus::Archived),
+            "ARCHIVED"
+        );
+        assert_eq!(
+            domain_adset_status_to_meta(&AdSetStatus::Deleted),
+            "DELETED"
+        );
+        assert_eq!(
+            domain_adset_status_to_meta(&AdSetStatus::Other("X".into())),
+            "X"
+        );
+    }
+
+    #[test]
+    fn test_meta_adset_to_domain() {
+        let raw = serde_json::json!({
+            "id": "23845600000000001",
+            "campaign_id": "120330000000000001",
+            "name": "Lookalike — Email List 1%",
+            "status": "ACTIVE",
+            "daily_budget": "2500",
+            "targeting": { "age_min": 25, "geo_locations": { "countries": ["US"] } },
+            "billing_event": "IMPRESSIONS",
+            "optimization_goal": "LEAD_GENERATION",
+            "created_time": "2026-01-15T10:35:00+0000",
+            "updated_time": "2026-02-20T09:10:00+0000"
+        });
+        let adset = meta_adset_to_domain(&raw).expect("should parse");
+        assert_eq!(adset.id.0, "23845600000000001");
+        assert_eq!(adset.provider, "meta");
+        assert_eq!(adset.campaign_id.0, "120330000000000001");
+        assert_eq!(adset.status, AdSetStatus::Active);
+        let targeting = adset.targeting.expect("targeting should be present");
+        assert_eq!(targeting["age_min"], 25);
+        let budget = adset.budget.expect("daily_budget should map");
+        assert!((budget.amount - 2500.0).abs() < f64::EPSILON);
+        assert_eq!(budget.kind, BudgetKind::Daily);
+        assert!(adset.updated_at.is_some());
+        assert!(adset.raw.is_some());
+    }
+
+    #[test]
+    fn test_meta_adset_to_domain_minimal() {
+        let raw = serde_json::json!({
+            "id": "1", "campaign_id": "2", "name": "Minimal",
+            "created_time": "2026-01-01T00:00:00+0000"
+        });
+        let adset = meta_adset_to_domain(&raw).expect("should parse");
+        assert_eq!(adset.status, AdSetStatus::Other("UNKNOWN".into()));
+        assert!(adset.targeting.is_none());
+        assert!(adset.budget.is_none());
+        assert!(adset.updated_at.is_none());
+    }
+
+    #[test]
+    fn test_meta_adset_to_domain_null_targeting_is_none() {
+        let raw = serde_json::json!({
+            "id": "1", "campaign_id": "2", "name": "Null targeting",
+            "targeting": null,
+            "created_time": "2026-01-01T00:00:00+0000"
+        });
+        let adset = meta_adset_to_domain(&raw).expect("should parse");
+        assert!(adset.targeting.is_none());
+    }
+
+    #[test]
+    fn test_meta_adset_to_domain_missing_campaign_id() {
+        let raw = serde_json::json!({
+            "id": "1", "name": "No campaign",
+            "created_time": "2026-01-01T00:00:00+0000"
+        });
+        assert!(meta_adset_to_domain(&raw).is_err());
+    }
+
+    #[test]
+    fn test_domain_to_meta_create_adset() {
+        let input = CreateAdSetInput {
+            campaign_id: CampaignId::from("camp_1"),
+            name: "New Ad Set".into(),
+            status: Some(AdSetStatus::Paused),
+            targeting: Some(serde_json::json!({ "geo_locations": { "countries": ["US"] } })),
+            budget: Some(Budget {
+                amount: 1500.0,
+                currency: "USD".into(),
+                kind: BudgetKind::Daily,
+            }),
+            extra: Some(serde_json::json!({
+                "billing_event": "IMPRESSIONS",
+                "optimization_goal": "LINK_CLICKS",
+            })),
+        };
+        let body = domain_to_meta_create_adset(&input);
+        assert_eq!(body["campaign_id"], "camp_1");
+        assert_eq!(body["name"], "New Ad Set");
+        assert_eq!(body["status"], "PAUSED");
+        assert_eq!(body["daily_budget"], "1500");
+        assert_eq!(body["targeting"]["geo_locations"]["countries"][0], "US");
+        assert_eq!(body["billing_event"], "IMPRESSIONS");
+        assert_eq!(body["optimization_goal"], "LINK_CLICKS");
+    }
+
+    #[test]
+    fn test_domain_to_meta_create_adset_minimal() {
+        let input = CreateAdSetInput {
+            campaign_id: CampaignId::from("camp_2"),
+            name: "Minimal".into(),
+            status: None,
+            targeting: None,
+            budget: None,
+            extra: None,
+        };
+        let body = domain_to_meta_create_adset(&input);
+        assert_eq!(body["campaign_id"], "camp_2");
+        assert!(body.get("status").is_none());
+        assert!(body.get("targeting").is_none());
+        assert!(body.get("daily_budget").is_none());
     }
 
     // ── Audience mapping tests ─────────────────────────────

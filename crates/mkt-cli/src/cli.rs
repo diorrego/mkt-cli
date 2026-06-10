@@ -4,12 +4,29 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
+/// Exit code contract, shown in `--help` so scripts and coding agents can
+/// branch on failures without parsing error text.
+const EXIT_CODES_HELP: &str = "\
+Exit codes:
+  0  success
+  1  unexpected error (I/O, transport, bug)
+  2  invalid input or configuration
+  3  authentication failed (check credentials, run 'mkt doctor')
+  4  resource or provider not found
+  5  rate limited (transient — retry after the suggested delay)
+  6  feature not supported by the provider (see 'mkt providers')
+  7  provider API rejected the request
+
+With --output json, data goes to stdout and errors are emitted on stderr as
+a single JSON object: {\"ok\":false,\"error\":{\"type\",\"message\",\"suggestion\"}}.
+Use --dry-run on any mutating command to preview without executing.";
+
 /// Multi-platform marketing CLI.
 ///
 /// Manage ads, audiences, organic posts, and analytics across
 /// Meta, Google Ads, TikTok, and LinkedIn from a single terminal.
 #[derive(Parser, Debug)]
-#[command(name = "mkt", version, about, long_about = None)]
+#[command(name = "mkt", version, about, long_about = None, after_help = EXIT_CODES_HELP)]
 pub struct Cli {
     /// Profile to use.
     #[arg(long, default_value = "default", global = true)]
@@ -77,7 +94,7 @@ pub enum Commands {
     Google {
         /// Domain subcommand.
         #[command(subcommand)]
-        domain: StubDomain,
+        domain: GoogleDomain,
     },
 
     /// TikTok for Business provider.
@@ -85,7 +102,7 @@ pub enum Commands {
     Tiktok {
         /// Domain subcommand.
         #[command(subcommand)]
-        domain: StubDomain,
+        domain: TiktokDomain,
     },
 
     /// LinkedIn Marketing provider.
@@ -93,7 +110,7 @@ pub enum Commands {
     Linkedin {
         /// Domain subcommand.
         #[command(subcommand)]
-        domain: StubDomain,
+        domain: LinkedinDomain,
     },
 
     /// List available providers and their capabilities.
@@ -108,6 +125,30 @@ pub enum Commands {
         #[command(subcommand)]
         action: ProfileAction,
     },
+
+    /// Generate shell completions (bash, zsh, fish, powershell, elvish).
+    Completions {
+        /// Target shell.
+        shell: clap_complete::Shell,
+    },
+
+    /// MCP (Model Context Protocol) server for chat agents without a
+    /// terminal (Claude Desktop, `ChatGPT`). Coding agents should use the
+    /// CLI directly.
+    #[cfg(feature = "mcp")]
+    Mcp {
+        /// MCP action.
+        #[command(subcommand)]
+        action: McpAction,
+    },
+}
+
+/// MCP server actions.
+#[cfg(feature = "mcp")]
+#[derive(Subcommand, Debug)]
+pub enum McpAction {
+    /// Serve MCP over stdio (logs go to stderr).
+    Serve,
 }
 
 /// Meta provider domain subcommands.
@@ -119,6 +160,12 @@ pub enum MetaDomain {
         /// Campaign action.
         #[command(subcommand)]
         action: CampaignAction,
+    },
+    /// Ad set management.
+    Adset {
+        /// Ad set action.
+        #[command(subcommand)]
+        action: AdsetAction,
     },
     /// Audience management.
     Audience {
@@ -158,6 +205,76 @@ pub enum MetaDomain {
     },
 }
 
+/// Google Ads provider domain subcommands.
+#[cfg(feature = "google")]
+#[derive(Subcommand, Debug)]
+pub enum GoogleDomain {
+    /// Campaign management.
+    ///
+    /// For create, --objective is the advertising channel type
+    /// (SEARCH, DISPLAY, `PERFORMANCE_MAX`, VIDEO, ...).
+    Campaign {
+        /// Campaign action.
+        #[command(subcommand)]
+        action: CampaignAction,
+    },
+    /// Insights / analytics (GAQL metrics).
+    Insight {
+        /// Insight action.
+        #[command(subcommand)]
+        action: InsightAction,
+    },
+}
+
+/// TikTok provider domain subcommands.
+#[cfg(feature = "tiktok")]
+#[derive(Subcommand, Debug)]
+pub enum TiktokDomain {
+    /// Campaign management.
+    ///
+    /// For create, --objective is the TikTok objective type
+    /// (TRAFFIC, `LEAD_GENERATION`, `WEB_CONVERSIONS`, REACH, ...).
+    Campaign {
+        /// Campaign action.
+        #[command(subcommand)]
+        action: CampaignAction,
+    },
+    /// Audience management (DMP custom audiences; list only).
+    Audience {
+        /// Audience action.
+        #[command(subcommand)]
+        action: AudienceAction,
+    },
+    /// Insights / analytics (integrated report).
+    Insight {
+        /// Insight action.
+        #[command(subcommand)]
+        action: InsightAction,
+    },
+}
+
+/// LinkedIn provider domain subcommands.
+#[cfg(feature = "linkedin")]
+#[derive(Subcommand, Debug)]
+pub enum LinkedinDomain {
+    /// Campaign management.
+    ///
+    /// For create, --objective is the LinkedIn objective type
+    /// (`LEAD_GENERATION`, `WEBSITE_VISIT`, `BRAND_AWARENESS`, ...) and
+    /// --extra must carry the campaign group URN.
+    Campaign {
+        /// Campaign action.
+        #[command(subcommand)]
+        action: CampaignAction,
+    },
+    /// Insights / analytics (adAnalytics).
+    Insight {
+        /// Insight action.
+        #[command(subcommand)]
+        action: InsightAction,
+    },
+}
+
 /// Campaign actions.
 #[derive(Subcommand, Debug)]
 pub enum CampaignAction {
@@ -183,12 +300,19 @@ pub enum CampaignAction {
         /// Campaign name.
         #[arg(long)]
         name: String,
-        /// Campaign objective.
+        /// Campaign objective (Meta: OUTCOME_*, Google: channel type like SEARCH).
         #[arg(long)]
         objective: String,
         /// Initial status.
         #[arg(long)]
         status: Option<String>,
+        /// Daily budget in currency units (required for Google Ads and LinkedIn).
+        #[arg(long)]
+        daily_budget: Option<f64>,
+        /// Provider-specific extra fields as inline JSON
+        /// (e.g. LinkedIn: '{"campaignGroup":"urn:li:sponsoredCampaignGroup:123"}').
+        #[arg(long)]
+        extra: Option<String>,
         /// Load from JSON file.
         #[arg(long)]
         file: Option<PathBuf>,
@@ -211,6 +335,41 @@ pub enum CampaignAction {
     },
 }
 
+/// Ad set actions.
+#[derive(Subcommand, Debug)]
+pub enum AdsetAction {
+    /// List ad sets for a campaign.
+    List {
+        /// Parent campaign ID.
+        #[arg(long)]
+        campaign: String,
+    },
+    /// Create an ad set.
+    Create {
+        /// Parent campaign ID.
+        #[arg(long)]
+        campaign: String,
+        /// Ad set name.
+        #[arg(long)]
+        name: String,
+        /// Initial status (active, paused).
+        #[arg(long)]
+        status: Option<String>,
+        /// Targeting spec as inline JSON.
+        #[arg(long)]
+        targeting: Option<String>,
+        /// Daily budget in minor units (e.g. cents).
+        #[arg(long)]
+        daily_budget: Option<f64>,
+        /// Optimization goal (e.g. `LINK_CLICKS`, `OFFSITE_CONVERSIONS`).
+        #[arg(long)]
+        optimization_goal: Option<String>,
+        /// Billing event (e.g. IMPRESSIONS).
+        #[arg(long)]
+        billing_event: Option<String>,
+    },
+}
+
 /// Audience actions.
 #[derive(Subcommand, Debug)]
 pub enum AudienceAction {
@@ -224,6 +383,17 @@ pub enum AudienceAction {
         /// Audience description.
         #[arg(long)]
         description: Option<String>,
+    },
+    /// Add users to an audience (PII is normalized and SHA-256 hashed locally).
+    AddUsers {
+        /// Audience ID.
+        id: String,
+        /// Email address (repeatable). Raw or pre-hashed SHA-256.
+        #[arg(long)]
+        email: Vec<String>,
+        /// Phone number (repeatable). Raw or pre-hashed SHA-256.
+        #[arg(long)]
+        phone: Vec<String>,
     },
 }
 
@@ -262,10 +432,16 @@ pub enum PostAction {
         #[arg(long)]
         link: Option<String>,
     },
-    /// Promote an existing post as an ad.
+    /// Promote an existing post as an ad (created paused, inside an existing ad set).
     Promote {
         /// Post ID.
         id: String,
+        /// Ad set to create the promoted-post ad in.
+        #[arg(long)]
+        adset: String,
+        /// Name for the created ad.
+        #[arg(long)]
+        name: Option<String>,
     },
 }
 
@@ -378,11 +554,4 @@ pub enum ProfileAction {
         /// Profile name.
         name: String,
     },
-}
-
-/// Stub domain for providers not yet implemented.
-#[derive(Subcommand, Debug)]
-pub enum StubDomain {
-    /// This provider is not yet implemented.
-    Status,
 }

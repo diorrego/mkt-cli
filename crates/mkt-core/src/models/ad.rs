@@ -91,10 +91,72 @@ impl<'de> Deserialize<'de> for AdStatus {
     }
 }
 
+impl crate::output::Formattable for Ad {
+    fn headers() -> Vec<String> {
+        vec![
+            "ID".into(),
+            "Name".into(),
+            "Status".into(),
+            "Ad Set".into(),
+            "Creative".into(),
+            "Provider".into(),
+        ]
+    }
+
+    fn row(&self) -> Vec<String> {
+        vec![
+            self.id.to_string(),
+            self.name.clone(),
+            self.status.to_string(),
+            self.adset_id.to_string(),
+            self.creative_id
+                .as_ref()
+                .map_or_else(|| "-".to_string(), ToString::to_string),
+            self.provider.clone(),
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use test_case::test_case;
+
+    #[test]
+    fn ad_formattable_headers_match_row_len() {
+        use crate::output::Formattable;
+        let ad = Ad {
+            id: AdId("ad_1".into()),
+            provider: "meta".into(),
+            adset_id: AdSetId::from("adset_1"),
+            name: "Boost".into(),
+            status: AdStatus::Paused,
+            creative_id: Some(CreativeId("c_1".into())),
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+            raw: None,
+        };
+        assert_eq!(Ad::headers().len(), ad.row().len());
+        assert_eq!(ad.row()[2], "paused");
+        assert_eq!(ad.row()[4], "c_1");
+    }
+
+    #[test]
+    fn ad_formattable_no_creative_shows_dash() {
+        use crate::output::Formattable;
+        let ad = Ad {
+            id: AdId("ad_2".into()),
+            provider: "meta".into(),
+            adset_id: AdSetId::from("adset_1"),
+            name: "No creative".into(),
+            status: AdStatus::Active,
+            creative_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+            raw: None,
+        };
+        assert_eq!(ad.row()[4], "-");
+    }
 
     #[test]
     fn ad_id_display() {

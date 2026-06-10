@@ -41,6 +41,8 @@ pub async fn execute(
             name,
             objective,
             status,
+            daily_budget,
+            extra,
             file: _,
         } => {
             if dry_run {
@@ -48,11 +50,26 @@ pub async fn execute(
                     "[dry-run] Would create campaign: name={name}, objective={objective}"
                 ));
             }
+            let extra_json = extra
+                .as_deref()
+                .map(serde_json::from_str)
+                .transpose()
+                .map_err(
+                    |e: serde_json::Error| mkt_core::error::MktError::ValidationError {
+                        field: "extra".into(),
+                        message: format!("invalid JSON: {e}"),
+                    },
+                )?;
             let input = CreateCampaignInput {
                 name: name.clone(),
                 objective: objective.clone(),
                 status: status.as_deref().map(parse_status),
-                ..Default::default()
+                budget: daily_budget.map(|amount| mkt_core::models::Budget {
+                    amount,
+                    currency: "USD".into(),
+                    kind: mkt_core::models::BudgetKind::Daily,
+                }),
+                extra: extra_json,
             };
             let campaign = provider.create_campaign(&input).await?;
             format_output(&[campaign], output_format)

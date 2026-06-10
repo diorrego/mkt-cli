@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, missing_docs)]
+#![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -83,4 +83,159 @@ fn unknown_subcommand_shows_error() {
         .args(["nonexistent"])
         .assert()
         .failure();
+}
+
+// ── Exit code + structured error contract (for agents/scripts) ────────────────
+
+/// Missing credentials must exit with code 3 (auth error).
+#[test]
+fn missing_token_exits_with_auth_code() {
+    Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["meta", "campaign", "list"])
+        .env("MKT_CONFIG_DIR", "/tmp/mkt-test-nonexistent")
+        .env_remove("MKT_META_ACCESS_TOKEN")
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("Authentication failed"));
+}
+
+/// With --output json, errors are emitted as a structured JSON object on
+/// stderr with a stable `error_type` and a recovery `suggestion`.
+#[test]
+fn json_output_emits_structured_error() {
+    let output = Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["--output", "json", "meta", "campaign", "list"])
+        .env("MKT_CONFIG_DIR", "/tmp/mkt-test-nonexistent")
+        .env_remove("MKT_META_ACCESS_TOKEN")
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(3));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let parsed: serde_json::Value =
+        serde_json::from_str(stderr.trim()).expect("stderr should be valid JSON");
+    assert_eq!(parsed["ok"], false);
+    assert_eq!(parsed["error"]["type"], "auth_error");
+    assert!(parsed["error"]["message"].is_string());
+    assert!(
+        parsed["error"]["suggestion"]
+            .as_str()
+            .unwrap()
+            .contains("doctor")
+    );
+}
+
+/// Invalid inline JSON (e.g. targeting) must exit with code 2 (validation).
+#[test]
+fn invalid_targeting_json_exits_with_validation_code() {
+    Command::cargo_bin("mkt")
+        .unwrap()
+        .args([
+            "meta",
+            "adset",
+            "create",
+            "--campaign",
+            "c1",
+            "--name",
+            "x",
+            "--targeting",
+            "{not json",
+        ])
+        .env("MKT_CONFIG_DIR", "/tmp/mkt-test-nonexistent")
+        .env("MKT_META_ACCESS_TOKEN", "dummy-token")
+        .env("MKT_META_AD_ACCOUNT_ID", "act_1")
+        .assert()
+        .code(2);
+}
+
+/// The exit code contract must be documented in --help for agent discovery.
+#[test]
+fn help_documents_exit_codes() {
+    Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Exit codes"))
+        .stdout(predicate::str::contains("rate limited"));
+}
+
+/// Doctor must report per-provider credential sources without exposing values.
+#[test]
+fn doctor_reports_credential_sources() {
+    let output = Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["doctor"])
+        .env("MKT_CONFIG_DIR", "/tmp/mkt-test-nonexistent")
+        .env("MKT_META_ACCESS_TOKEN", "secret-token-value")
+        .env_remove("MKT_GOOGLE_DEVELOPER_TOKEN")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("MKT_META_ACCESS_TOKEN") && stdout.contains("[ok]"),
+        "doctor should flag the env var as set: {stdout}"
+    );
+    assert!(
+        !stdout.contains("secret-token-value"),
+        "doctor must never print token values: {stdout}"
+    );
+}
+
+/// Shell completion generation must work for the major shells.
+#[test]
+fn completions_command_generates_bash_script() {
+    Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["completions", "bash"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("_mkt"));
+}
+
+/// The MCP server must answer initialize and tools/list over stdio with
+/// the consolidated tool set.
+#[test]
+fn mcp_serve_lists_tools_over_stdio() {
+    let requests = concat!(
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0.0.0"}}}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+        "\n",
+    );
+
+    let output = Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["mcp", "serve"])
+        .env("MKT_CONFIG_DIR", "/tmp/mkt-test-nonexistent")
+        .write_stdin(requests)
+        .timeout(std::time::Duration::from_secs(20))
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(r#""name":"mkt""#),
+        "initialize should report the server name: {stdout}"
+    );
+    for tool in [
+        "campaign_list",
+        "campaign_get",
+        "campaign_create",
+        "campaign_set_status",
+        "insights_get",
+        "provider_health",
+    ] {
+        assert!(stdout.contains(tool), "tools/list missing {tool}: {stdout}");
+    }
+    // Spend-safety must be stated where the model can see it.
+    assert!(
+        stdout.contains("PAUSED"),
+        "tool descriptions must state the paused-by-default contract: {stdout}"
+    );
 }

@@ -115,6 +115,35 @@ pub struct CreateAdSetInput {
     pub extra: Option<serde_json::Value>,
 }
 
+impl crate::output::Formattable for AdSet {
+    fn headers() -> Vec<String> {
+        vec![
+            "ID".into(),
+            "Name".into(),
+            "Status".into(),
+            "Campaign".into(),
+            "Budget".into(),
+            "Provider".into(),
+        ]
+    }
+
+    fn row(&self) -> Vec<String> {
+        let budget = self
+            .budget
+            .as_ref()
+            .map(|b| format!("{} {} ({})", b.amount, b.currency, b.kind))
+            .unwrap_or_default();
+        vec![
+            self.id.to_string(),
+            self.name.clone(),
+            self.status.to_string(),
+            self.campaign_id.to_string(),
+            budget,
+            self.provider.clone(),
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +217,54 @@ mod tests {
         assert!(input.targeting.is_none());
         assert!(input.budget.is_none());
         assert!(input.extra.is_none());
+    }
+
+    #[test]
+    fn adset_formattable_headers_match_row_len() {
+        use crate::output::Formattable;
+        let now = chrono::Utc::now();
+        let adset = AdSet {
+            id: AdSetId("adset_1".into()),
+            provider: "meta".into(),
+            campaign_id: CampaignId::from("camp_1"),
+            name: "Test Ad Set".into(),
+            status: AdSetStatus::Active,
+            targeting: None,
+            budget: Some(Budget {
+                amount: 1500.0,
+                currency: "USD".into(),
+                kind: crate::models::BudgetKind::Daily,
+            }),
+            created_at: now,
+            updated_at: None,
+            raw: None,
+        };
+        let headers = AdSet::headers();
+        let row = adset.row();
+        assert_eq!(headers.len(), row.len());
+        assert_eq!(row[0], "adset_1");
+        assert_eq!(row[2], "active");
+        assert_eq!(row[3], "camp_1");
+        assert!(row[4].contains("1500"), "budget cell should show amount");
+    }
+
+    #[test]
+    fn adset_formattable_row_without_budget_is_empty_cell() {
+        use crate::output::Formattable;
+        let now = chrono::Utc::now();
+        let adset = AdSet {
+            id: AdSetId("adset_2".into()),
+            provider: "meta".into(),
+            campaign_id: CampaignId::from("camp_1"),
+            name: "No Budget".into(),
+            status: AdSetStatus::Paused,
+            targeting: None,
+            budget: None,
+            created_at: now,
+            updated_at: None,
+            raw: None,
+        };
+        assert_eq!(adset.row()[4], "");
     }
 
     #[test]
