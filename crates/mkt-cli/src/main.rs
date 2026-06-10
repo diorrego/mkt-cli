@@ -7,7 +7,7 @@ use clap::Parser;
 
 use cli::{Cli, Commands};
 
-fn main() -> anyhow::Result<()> {
+fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
 
     // Initialize tracing
@@ -24,11 +24,55 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     // Build tokio runtime
-    let rt = tokio::runtime::Builder::new_multi_thread()
+    let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()?;
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("error: failed to start async runtime: {e}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
 
-    rt.block_on(run(cli))
+    let emit_json_errors = matches!(cli.output, cli::OutputFormatArg::Json);
+    match rt.block_on(run(cli)) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => report_error(&e, emit_json_errors),
+    }
+}
+
+/// Print an error to stderr (structured JSON when `--output json`) and
+/// translate it into the documented exit code contract.
+fn report_error(error: &anyhow::Error, as_json: bool) -> std::process::ExitCode {
+    use mkt_core::error::MktError;
+
+    let mkt_error = error.downcast_ref::<MktError>();
+    let exit_code = mkt_error.map_or(1, MktError::exit_code);
+
+    if as_json {
+        let mut err_obj = serde_json::json!({
+            "type": mkt_error.map_or("unexpected_error", |e| e.error_type()),
+            "message": error.to_string(),
+        });
+        if let Some(e) = mkt_error {
+            if let Some(suggestion) = e.suggestion() {
+                err_obj["suggestion"] = serde_json::Value::String(suggestion);
+            }
+            if e.is_transient() {
+                err_obj["transient"] = serde_json::Value::Bool(true);
+            }
+        }
+        let envelope = serde_json::json!({ "ok": false, "error": err_obj });
+        eprintln!("{envelope}");
+    } else {
+        eprintln!("error: {error}");
+        if let Some(suggestion) = mkt_error.and_then(MktError::suggestion) {
+            eprintln!("hint: {suggestion}");
+        }
+    }
+
+    std::process::ExitCode::from(exit_code)
 }
 
 async fn run(cli: Cli) -> anyhow::Result<()> {

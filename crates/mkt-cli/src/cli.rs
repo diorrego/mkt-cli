@@ -4,12 +4,29 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
+/// Exit code contract, shown in `--help` so scripts and coding agents can
+/// branch on failures without parsing error text.
+const EXIT_CODES_HELP: &str = "\
+Exit codes:
+  0  success
+  1  unexpected error (I/O, transport, bug)
+  2  invalid input or configuration
+  3  authentication failed (check credentials, run 'mkt doctor')
+  4  resource or provider not found
+  5  rate limited (transient — retry after the suggested delay)
+  6  feature not supported by the provider (see 'mkt providers')
+  7  provider API rejected the request
+
+With --output json, data goes to stdout and errors are emitted on stderr as
+a single JSON object: {\"ok\":false,\"error\":{\"type\",\"message\",\"suggestion\"}}.
+Use --dry-run on any mutating command to preview without executing.";
+
 /// Multi-platform marketing CLI.
 ///
 /// Manage ads, audiences, organic posts, and analytics across
 /// Meta, Google Ads, TikTok, and LinkedIn from a single terminal.
 #[derive(Parser, Debug)]
-#[command(name = "mkt", version, about, long_about = None)]
+#[command(name = "mkt", version, about, long_about = None, after_help = EXIT_CODES_HELP)]
 pub struct Cli {
     /// Profile to use.
     #[arg(long, default_value = "default", global = true)]
