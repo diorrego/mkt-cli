@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Google Ads provider (REST v24): campaign CRUD via GAQL + mutate endpoints,
+  insights with `costMicros` conversion, OAuth2 refresh-token exchange,
+  `mkt google campaign|insight` commands (enabled by default)
+- Meta ad sets: `mkt meta adset list|create` with targeting, budget,
+  optimization goal, and billing event
+- Meta post promotion (`mkt meta post promote --adset`): boost flow via
+  `object_story_id` creative + ad, always created PAUSED for spend safety
+- Meta audience user upload (`mkt meta audience add-users`) with local
+  SHA-256 PII hashing (`mkt_core::pii`, shared across future providers)
+- Agent-first contract: stable exit codes (0-7) documented in `--help`,
+  structured JSON errors on stderr (`{ok, error: {type, message,
+  suggestion, transient}}`) with `--output json`
+- `AGENTS.md` operating guide and `llms.txt` index for coding agents
+- `--daily-budget` flag on `campaign create`
+
+### Changed
+
+- Default Meta Graph API version bumped from v24.0 to v25.0
+- `PromotePostInput` redesigned: promotion targets an existing ad set
+  (budget/targeting live on the ad set, matching all platforms' semantics)
+
 - Core workspace structure with 7 crates
 - `MarketingProvider` trait with full CRUD method signatures
 - Domain models: Campaign, AdSet, Ad, Creative, Audience, Insight, Post, Media
