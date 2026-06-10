@@ -266,6 +266,17 @@ pub enum AudienceAction {
         #[arg(long)]
         description: Option<String>,
     },
+    /// Add users to an audience (PII is normalized and SHA-256 hashed locally).
+    AddUsers {
+        /// Audience ID.
+        id: String,
+        /// Email address (repeatable). Raw or pre-hashed SHA-256.
+        #[arg(long)]
+        email: Vec<String>,
+        /// Phone number (repeatable). Raw or pre-hashed SHA-256.
+        #[arg(long)]
+        phone: Vec<String>,
+    },
 }
 
 /// Insight actions.
@@ -303,10 +314,16 @@ pub enum PostAction {
         #[arg(long)]
         link: Option<String>,
     },
-    /// Promote an existing post as an ad.
+    /// Promote an existing post as an ad (created paused, inside an existing ad set).
     Promote {
         /// Post ID.
         id: String,
+        /// Ad set to create the promoted-post ad in.
+        #[arg(long)]
+        adset: String,
+        /// Name for the created ad.
+        #[arg(long)]
+        name: Option<String>,
     },
 }
 

@@ -129,7 +129,7 @@ async fn handle_meta(
         }
         cli::MetaDomain::Raw { action } => handle_meta_raw(action, &provider).await,
         cli::MetaDomain::Audience { action } => {
-            commands::audience::execute(action, &provider, output_format)
+            commands::audience::execute(action, &provider, output_format, cli.dry_run)
                 .await
                 .map_err(anyhow::Error::from)
         }

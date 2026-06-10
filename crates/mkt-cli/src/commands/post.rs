@@ -1,6 +1,6 @@
 //! Post command handlers.
 
-use mkt_core::error::{MktError, Result};
+use mkt_core::error::Result;
 use mkt_core::output::{OutputFormat, format_output};
 use mkt_core::provider::MarketingProvider;
 
@@ -33,11 +33,21 @@ pub async fn execute(
             let post = provider.publish_post(&input).await?;
             format_output(&[post], output_format)
         }
-        PostAction::Promote { id } => {
+        PostAction::Promote { id, adset, name } => {
             if dry_run {
-                return Ok(format!("[dry-run] Would promote post {id}"));
+                return Ok(format!(
+                    "[dry-run] Would promote post {id} in ad set {adset} (ad created paused)"
+                ));
             }
-            Err(MktError::not_supported(provider.name(), "promote_post"))
+            let input = mkt_core::models::PromotePostInput {
+                adset_id: adset.clone(),
+                name: name.clone(),
+                extra: None,
+            };
+            let ad = provider
+                .promote_post(&mkt_core::models::PostId::from(id.as_str()), &input)
+                .await?;
+            format_output(&[ad], output_format)
         }
     }
 }

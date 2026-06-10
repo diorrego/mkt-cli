@@ -2,11 +2,11 @@
 
 use mkt_core::error::{MktError, Result};
 use mkt_core::models::{
-    AdSet, Audience, Campaign, CampaignFilters, CampaignId, CreateAdSetInput, CreateAudienceInput,
-    CreateCampaignInput, CreateCreativeInput, CreateDarkPostInput, Creative, CreativeId,
-    HttpMethod, InsightsQuery, InsightsReport, MediaAsset, MediaAssetId, MediaType, Paginated,
-    Post, ProviderHealth, PublishPostInput, UpdateCampaignInput, UploadImageInput,
-    UploadVideoInput,
+    Ad, AdSet, Audience, AudienceId, AudienceUpdateResult, AudienceUser, Campaign, CampaignFilters,
+    CampaignId, CreateAdSetInput, CreateAudienceInput, CreateCampaignInput, CreateCreativeInput,
+    CreateDarkPostInput, Creative, CreativeId, HttpMethod, InsightsQuery, InsightsReport,
+    MediaAsset, MediaAssetId, MediaType, Paginated, Post, PostId, PromotePostInput, ProviderHealth,
+    PublishPostInput, UpdateCampaignInput, UploadImageInput, UploadVideoInput,
 };
 use mkt_core::provider::{MarketingProvider, ProviderCapabilities};
 use tracing::instrument;
@@ -369,6 +369,36 @@ impl MarketingProvider for MetaProvider {
         }
     }
 
+    #[instrument(skip(self, users))]
+    fn add_users_to_audience(
+        &self,
+        id: &AudienceId,
+        users: &[AudienceUser],
+    ) -> impl std::future::Future<Output = Result<AudienceUpdateResult>> + Send {
+        let body = mapping::domain_users_to_meta_payload(users);
+        async move {
+            if users.is_empty() {
+                return Err(MktError::ValidationError {
+                    field: "users".into(),
+                    message: "at least one user is required".into(),
+                });
+            }
+            let path = format!("{}/users", id.0);
+            let resp = self.client.post(&path, &body).await?;
+
+            Ok(AudienceUpdateResult {
+                audience_id: AudienceId(
+                    resp["audience_id"]
+                        .as_str()
+                        .unwrap_or(id.0.as_str())
+                        .to_string(),
+                ),
+                num_received: resp["num_received"].as_u64().unwrap_or(0),
+                num_invalid: resp["num_invalid_entries"].as_u64().unwrap_or(0),
+            })
+        }
+    }
+
     // ── Insights ─────────────────────────────────────────
 
     #[instrument(skip(self, query))]
@@ -423,6 +453,64 @@ impl MarketingProvider for MetaProvider {
                 "instagram" => self.publish_instagram(input).await,
                 _ => self.publish_facebook(input).await,
             }
+        }
+    }
+
+    #[instrument(skip(self, input))]
+    fn promote_post(
+        &self,
+        post_id: &PostId,
+        input: &PromotePostInput,
+    ) -> impl std::future::Future<Output = Result<Ad>> + Send {
+        async move {
+            // Step 1: create an ad creative that references the organic post.
+            let creative_path = format!("{}/adcreatives", self.act_path());
+            let ad_name = input
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("Boost — {}", post_id.0));
+            let creative_body = serde_json::json!({
+                "name": ad_name,
+                "object_story_id": post_id.0,
+            });
+            let creative_resp = self.client.post(&creative_path, &creative_body).await?;
+            let creative_id = creative_resp["id"]
+                .as_str()
+                .ok_or_else(|| MktError::ApiError {
+                    provider: "meta".into(),
+                    status: 0,
+                    message: "promote creative response missing 'id'".into(),
+                    retry_after: None,
+                })?;
+
+            // Step 2: create the ad in the target ad set. Always paused so a
+            // human (or agent) activates spend explicitly.
+            let ads_path = format!("{}/ads", self.act_path());
+            let mut ad_body = serde_json::json!({
+                "name": ad_name,
+                "adset_id": input.adset_id,
+                "creative": { "creative_id": creative_id },
+                "status": "PAUSED",
+            });
+            if let Some(extra) = &input.extra {
+                if let (Some(base), Some(overlay)) = (ad_body.as_object_mut(), extra.as_object()) {
+                    for (k, v) in overlay {
+                        base.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            let ad_resp = self.client.post(&ads_path, &ad_body).await?;
+            let ad_id = ad_resp["id"].as_str().ok_or_else(|| MktError::ApiError {
+                provider: "meta".into(),
+                status: 0,
+                message: "promote ad response missing 'id'".into(),
+                retry_after: None,
+            })?;
+
+            // Step 3: fetch the full ad object.
+            let params = [("fields", mapping::AD_FIELDS)];
+            let json = self.client.get(ad_id, &params).await?;
+            mapping::meta_ad_to_domain(&json)
         }
     }
 

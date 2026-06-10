@@ -9,10 +9,12 @@ use std::collections::HashMap;
 
 use mkt_core::error::{MktError, Result};
 use mkt_core::models::{
-    AdSet, AdSetId, AdSetStatus, Audience, AudienceId, AudienceType, Budget, BudgetKind, Campaign,
-    CampaignId, CampaignStatus, CreateAdSetInput, CreateAudienceInput, CreateCampaignInput,
-    InsightsReport, InsightsRow, MetricValue, Post, PostId, UpdateCampaignInput,
+    Ad, AdId, AdSet, AdSetId, AdSetStatus, AdStatus, Audience, AudienceId, AudienceType,
+    AudienceUser, Budget, BudgetKind, Campaign, CampaignId, CampaignStatus, CreateAdSetInput,
+    CreateAudienceInput, CreateCampaignInput, CreativeId, InsightsReport, InsightsRow, MetricValue,
+    Post, PostId, UpdateCampaignInput,
 };
+use mkt_core::pii;
 
 /// The set of fields requested from the campaigns endpoint.
 pub const CAMPAIGN_FIELDS: &str = "id,name,status,objective,daily_budget,lifetime_budget,\
@@ -21,6 +23,9 @@ pub const CAMPAIGN_FIELDS: &str = "id,name,status,objective,daily_budget,lifetim
 /// The set of fields requested from the adsets endpoint.
 pub const ADSET_FIELDS: &str = "id,campaign_id,name,status,targeting,daily_budget,\
      lifetime_budget,billing_event,optimization_goal,created_time,updated_time";
+
+/// The set of fields requested from the ads endpoint.
+pub const AD_FIELDS: &str = "id,adset_id,name,status,creative,created_time,updated_time";
 
 // ── Status mapping ─────────────────────────────────────────
 
@@ -197,6 +202,99 @@ pub fn domain_to_meta_create_adset(input: &CreateAdSetInput) -> serde_json::Valu
     }
 
     body
+}
+
+// ── Ads ───────────────────────────────────────────────────
+
+/// Map a Meta API uppercase ad status string to a domain status.
+pub fn meta_ad_status_to_domain(status: &str) -> AdStatus {
+    match status {
+        "ACTIVE" => AdStatus::Active,
+        "PAUSED" => AdStatus::Paused,
+        "ARCHIVED" => AdStatus::Archived,
+        "DELETED" => AdStatus::Deleted,
+        other => AdStatus::Other(other.to_string()),
+    }
+}
+
+/// Convert a raw Graph API ad JSON object into a domain [`Ad`].
+///
+/// # Errors
+///
+/// Returns [`MktError::ApiError`] if required fields (`id`, `name`,
+/// `adset_id`) are missing from the response.
+pub fn meta_ad_to_domain(raw: &serde_json::Value) -> Result<Ad> {
+    let id = extract_str(raw, "id")?;
+    let name = extract_str(raw, "name")?;
+    let adset_id = extract_str(raw, "adset_id")?;
+    let status_str = raw["status"].as_str().unwrap_or("UNKNOWN");
+
+    let creative_id = raw["creative"]["id"]
+        .as_str()
+        .map(|s| CreativeId(s.to_string()));
+    let created_at = parse_datetime(raw, "created_time")?;
+    let updated_at = parse_optional_datetime(raw, "updated_time");
+
+    Ok(Ad {
+        id: AdId(id),
+        provider: "meta".to_string(),
+        adset_id: AdSetId(adset_id),
+        name,
+        status: meta_ad_status_to_domain(status_str),
+        creative_id,
+        created_at,
+        updated_at,
+        raw: Some(raw.clone()),
+    })
+}
+
+// ── Audience user upload ──────────────────────────────────
+
+/// Build the `payload` body for a Meta `POST /{audience_id}/users` request.
+///
+/// Identifiers are normalized and SHA-256 hashed per Meta's customer file
+/// requirements ([`mkt_core::pii`]). The schema only includes columns for
+/// which at least one user has a value; missing cells are empty strings.
+/// `EXTERN_ID` values are not hashed, per the Meta contract.
+pub fn domain_users_to_meta_payload(users: &[AudienceUser]) -> serde_json::Value {
+    let has_email = users.iter().any(|u| u.email.is_some());
+    let has_phone = users.iter().any(|u| u.phone.is_some());
+    let has_extern = users.iter().any(|u| u.external_id.is_some());
+
+    let mut schema: Vec<&str> = Vec::new();
+    if has_email {
+        schema.push("EMAIL");
+    }
+    if has_phone {
+        schema.push("PHONE");
+    }
+    if has_extern {
+        schema.push("EXTERN_ID");
+    }
+
+    let data: Vec<Vec<String>> = users
+        .iter()
+        .map(|u| {
+            let mut row = Vec::new();
+            if has_email {
+                row.push(u.email.as_deref().map(pii::hash_email).unwrap_or_default());
+            }
+            if has_phone {
+                row.push(u.phone.as_deref().map(pii::hash_phone).unwrap_or_default());
+            }
+            if has_extern {
+                row.push(u.external_id.clone().unwrap_or_default());
+            }
+            row
+        })
+        .collect();
+
+    serde_json::json!({
+        "payload": {
+            "schema": schema,
+            "data": data,
+        }
+    })
 }
 
 // ── Audiences ─────────────────────────────────────────────
