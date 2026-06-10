@@ -120,6 +120,12 @@ pub enum MetaDomain {
         #[command(subcommand)]
         action: CampaignAction,
     },
+    /// Ad set management.
+    Adset {
+        /// Ad set action.
+        #[command(subcommand)]
+        action: AdsetAction,
+    },
     /// Audience management.
     Audience {
         /// Audience action.
@@ -208,6 +214,41 @@ pub enum CampaignAction {
     Delete {
         /// Campaign ID.
         id: String,
+    },
+}
+
+/// Ad set actions.
+#[derive(Subcommand, Debug)]
+pub enum AdsetAction {
+    /// List ad sets for a campaign.
+    List {
+        /// Parent campaign ID.
+        #[arg(long)]
+        campaign: String,
+    },
+    /// Create an ad set.
+    Create {
+        /// Parent campaign ID.
+        #[arg(long)]
+        campaign: String,
+        /// Ad set name.
+        #[arg(long)]
+        name: String,
+        /// Initial status (active, paused).
+        #[arg(long)]
+        status: Option<String>,
+        /// Targeting spec as inline JSON.
+        #[arg(long)]
+        targeting: Option<String>,
+        /// Daily budget in minor units (e.g. cents).
+        #[arg(long)]
+        daily_budget: Option<f64>,
+        /// Optimization goal (e.g. `LINK_CLICKS`, `OFFSITE_CONVERSIONS`).
+        #[arg(long)]
+        optimization_goal: Option<String>,
+        /// Billing event (e.g. IMPRESSIONS).
+        #[arg(long)]
+        billing_event: Option<String>,
     },
 }
 

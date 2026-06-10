@@ -123,7 +123,7 @@ pub struct MetaConfig {
     /// Instagram user ID for IG publishing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ig_user_id: Option<String>,
-    /// API version override (default: "v24.0").
+    /// API version override (default: "v25.0").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_version: Option<String>,
 }

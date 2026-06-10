@@ -1,5 +1,6 @@
 //! Command handlers for the `mkt` CLI.
 
+pub mod adset;
 pub mod audience;
 pub mod campaign;
 pub mod creative;

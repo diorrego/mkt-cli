@@ -4,7 +4,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::common::Budget;
 
 /// Opaque post identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -73,16 +72,19 @@ pub struct PublishPostInput {
 }
 
 /// Input for promoting an existing post as a paid ad.
+///
+/// Promotion places the post as an ad inside an existing ad set;
+/// budget, schedule, and targeting are controlled by that ad set.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromotePostInput {
-    /// Budget to allocate for the promotion.
-    pub budget: Budget,
-    /// Number of days to run the promotion.
+    /// The ad set the promoted-post ad is created in.
+    pub adset_id: String,
+    /// Name for the created ad (provider generates one if omitted).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_days: Option<u32>,
-    /// Targeting configuration.
+    pub name: Option<String>,
+    /// Provider-specific extra fields.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub targeting: Option<serde_json::Value>,
+    pub extra: Option<serde_json::Value>,
 }
 
 impl crate::output::Formattable for Post {
@@ -169,23 +171,30 @@ mod tests {
     #[test]
     #[allow(clippy::expect_used)]
     fn promote_post_input_serde_roundtrip() {
-        use super::super::common::{Budget, BudgetKind};
         let input = PromotePostInput {
-            budget: Budget {
-                amount: 5000.0,
-                currency: "USD".into(),
-                kind: BudgetKind::Daily,
-            },
-            duration_days: Some(7),
-            targeting: None,
+            adset_id: "23845600000000001".into(),
+            name: Some("Boost — Summer Post".into()),
+            extra: None,
         };
         let json = serde_json::to_string(&input).expect("serialize PromotePostInput");
         let back: PromotePostInput =
             serde_json::from_str(&json).expect("deserialize PromotePostInput");
-        assert!((back.budget.amount - 5000.0).abs() < f64::EPSILON);
-        assert_eq!(back.budget.currency, "USD");
-        assert_eq!(back.duration_days, Some(7));
-        assert!(back.targeting.is_none());
+        assert_eq!(back.adset_id, "23845600000000001");
+        assert_eq!(back.name.as_deref(), Some("Boost — Summer Post"));
+        assert!(back.extra.is_none());
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn promote_post_input_optional_fields_skip_serializing_if_none() {
+        let input = PromotePostInput {
+            adset_id: "1".into(),
+            name: None,
+            extra: None,
+        };
+        let json = serde_json::to_string(&input).expect("serialize PromotePostInput");
+        assert!(!json.contains("name"));
+        assert!(!json.contains("extra"));
     }
 
     #[test]

@@ -2,10 +2,11 @@
 
 use mkt_core::error::{MktError, Result};
 use mkt_core::models::{
-    Audience, Campaign, CampaignFilters, CampaignId, CreateAudienceInput, CreateCampaignInput,
-    CreateCreativeInput, CreateDarkPostInput, Creative, CreativeId, HttpMethod, InsightsQuery,
-    InsightsReport, MediaAsset, MediaAssetId, MediaType, Paginated, Post, ProviderHealth,
-    PublishPostInput, UpdateCampaignInput, UploadImageInput, UploadVideoInput,
+    AdSet, Audience, Campaign, CampaignFilters, CampaignId, CreateAdSetInput, CreateAudienceInput,
+    CreateCampaignInput, CreateCreativeInput, CreateDarkPostInput, Creative, CreativeId,
+    HttpMethod, InsightsQuery, InsightsReport, MediaAsset, MediaAssetId, MediaType, Paginated,
+    Post, ProviderHealth, PublishPostInput, UpdateCampaignInput, UploadImageInput,
+    UploadVideoInput,
 };
 use mkt_core::provider::{MarketingProvider, ProviderCapabilities};
 use tracing::instrument;
@@ -270,6 +271,61 @@ impl MarketingProvider for MetaProvider {
         async move {
             let _result = self.client.delete(&id.0).await?;
             Ok(())
+        }
+    }
+
+    // ── Ad Sets ───────────────────────────────────────────
+
+    #[instrument(skip(self))]
+    fn list_adsets(
+        &self,
+        campaign_id: &CampaignId,
+    ) -> impl std::future::Future<Output = Result<Paginated<AdSet>>> + Send {
+        async move {
+            let path = format!("{}/adsets", campaign_id.0);
+            let params = [("fields", mapping::ADSET_FIELDS)];
+            let json = self.client.get(&path, &params).await?;
+
+            let items = json["data"]
+                .as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .map(mapping::meta_adset_to_domain)
+                .collect::<Result<Vec<_>>>()?;
+
+            let next_cursor = json["paging"]["cursors"]["after"]
+                .as_str()
+                .map(String::from);
+
+            Ok(Paginated {
+                data: items,
+                next_cursor,
+                total: None,
+            })
+        }
+    }
+
+    #[instrument(skip(self, input))]
+    fn create_adset(
+        &self,
+        input: &CreateAdSetInput,
+    ) -> impl std::future::Future<Output = Result<AdSet>> + Send {
+        async move {
+            let body = mapping::domain_to_meta_create_adset(input);
+            let path = format!("{}/adsets", self.act_path());
+            let result = self.client.post(&path, &body).await?;
+
+            // The create response only contains {"id":"..."}.
+            let new_id = result["id"].as_str().ok_or_else(|| MktError::ApiError {
+                provider: "meta".into(),
+                status: 0,
+                message: "create adset response missing 'id'".into(),
+                retry_after: None,
+            })?;
+
+            let get_params = [("fields", mapping::ADSET_FIELDS)];
+            let json = self.client.get(new_id, &get_params).await?;
+            mapping::meta_adset_to_domain(&json)
         }
     }
 

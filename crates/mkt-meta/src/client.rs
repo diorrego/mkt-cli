@@ -12,7 +12,7 @@ use tracing::instrument;
 use crate::error::GraphApiErrorResponse;
 
 /// Default Graph API version.
-const DEFAULT_API_VERSION: &str = "v24.0";
+const DEFAULT_API_VERSION: &str = "v25.0";
 
 /// Maximum concurrent requests (semaphore permits).
 const MAX_CONCURRENT: usize = 200;

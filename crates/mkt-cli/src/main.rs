@@ -102,7 +102,7 @@ async fn handle_meta(
 
     let api_version = meta_config
         .and_then(|c| c.api_version.as_deref())
-        .unwrap_or("v24.0");
+        .unwrap_or("v25.0");
 
     let client = mkt_meta::MetaClient::new(
         secrecy::SecretString::from(token.expose_secret().to_string()),
@@ -119,6 +119,11 @@ async fn handle_meta(
     match domain {
         cli::MetaDomain::Campaign { action } => {
             commands::campaign::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+        cli::MetaDomain::Adset { action } => {
+            commands::adset::execute(action, &provider, output_format, cli.dry_run)
                 .await
                 .map_err(anyhow::Error::from)
         }
