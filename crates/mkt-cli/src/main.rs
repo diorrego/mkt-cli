@@ -89,6 +89,14 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             commands::profile::execute(action).map_err(anyhow::Error::from)
         }
 
+        Commands::Completions { shell } => {
+            use clap::CommandFactory;
+            let mut cmd = Cli::command();
+            let mut buf = Vec::new();
+            clap_complete::generate(*shell, &mut cmd, "mkt", &mut buf);
+            Ok(String::from_utf8_lossy(&buf).into_owned())
+        }
+
         #[cfg(feature = "meta")]
         Commands::Meta { domain } => handle_meta(domain, &cli, output_format).await,
 
@@ -99,7 +107,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Tiktok { .. } => Ok("TikTok provider is not yet implemented.".into()),
 
         #[cfg(feature = "linkedin")]
-        Commands::Linkedin { .. } => Ok("LinkedIn provider is not yet implemented.".into()),
+        Commands::Linkedin { domain } => handle_linkedin(domain, &cli, output_format).await,
     };
 
     match result {
@@ -279,6 +287,63 @@ async fn handle_google(
                 .map_err(anyhow::Error::from)
         }
         cli::GoogleDomain::Insight { action } => {
+            commands::insight::execute(action, &provider, output_format)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+    }
+}
+
+#[cfg(feature = "linkedin")]
+async fn handle_linkedin(
+    domain: &cli::LinkedinDomain,
+    cli: &Cli,
+    output_format: mkt_core::output::OutputFormat,
+) -> anyhow::Result<String> {
+    use mkt_core::auth;
+    use mkt_core::config::MktConfig;
+    use mkt_core::error::MktError;
+    use secrecy::ExposeSecret;
+
+    let config = if let Some(path) = &cli.config {
+        MktConfig::load_from_file(path)?
+    } else {
+        MktConfig::load()?
+    };
+
+    let profile = config.profile(&cli.profile).ok();
+    let li_config = profile.and_then(|p| p.linkedin.as_ref());
+
+    let token = auth::resolve_token(
+        "linkedin",
+        "MKT_LINKEDIN_ACCESS_TOKEN",
+        li_config.and_then(|c| c.access_token.as_deref()),
+    )?;
+
+    let ad_account_id = std::env::var("MKT_LINKEDIN_AD_ACCOUNT_ID")
+        .ok()
+        .or_else(|| li_config.and_then(|c| c.ad_account_id.clone()))
+        .ok_or_else(|| {
+            MktError::auth_error(
+                "linkedin",
+                "No ad account ID found. Set MKT_LINKEDIN_AD_ACCOUNT_ID or configure it \
+                 in your profile.",
+            )
+        })?;
+
+    let client = mkt_linkedin::LinkedInClient::new(
+        secrecy::SecretString::from(token.expose_secret().to_string()),
+        ad_account_id,
+    )?;
+    let provider = mkt_linkedin::LinkedInProvider::new(client);
+
+    match domain {
+        cli::LinkedinDomain::Campaign { action } => {
+            commands::campaign::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+        cli::LinkedinDomain::Insight { action } => {
             commands::insight::execute(action, &provider, output_format)
                 .await
                 .map_err(anyhow::Error::from)

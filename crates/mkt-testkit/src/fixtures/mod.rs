@@ -6,4 +6,5 @@
 //! compile time and require no filesystem access at runtime.
 
 pub mod google;
+pub mod linkedin;
 pub mod meta;

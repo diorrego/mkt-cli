@@ -161,3 +161,37 @@ fn help_documents_exit_codes() {
         .stdout(predicate::str::contains("Exit codes"))
         .stdout(predicate::str::contains("rate limited"));
 }
+
+/// Doctor must report per-provider credential sources without exposing values.
+#[test]
+fn doctor_reports_credential_sources() {
+    let output = Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["doctor"])
+        .env("MKT_CONFIG_DIR", "/tmp/mkt-test-nonexistent")
+        .env("MKT_META_ACCESS_TOKEN", "secret-token-value")
+        .env_remove("MKT_GOOGLE_DEVELOPER_TOKEN")
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("MKT_META_ACCESS_TOKEN") && stdout.contains("[ok]"),
+        "doctor should flag the env var as set: {stdout}"
+    );
+    assert!(
+        !stdout.contains("secret-token-value"),
+        "doctor must never print token values: {stdout}"
+    );
+}
+
+/// Shell completion generation must work for the major shells.
+#[test]
+fn completions_command_generates_bash_script() {
+    Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["completions", "bash"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("_mkt"));
+}

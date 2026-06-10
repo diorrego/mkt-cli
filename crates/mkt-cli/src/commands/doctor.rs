@@ -51,5 +51,22 @@ pub fn execute(config_path: Option<&std::path::Path>) -> Result<String> {
         }
     }
 
+    // Check credential env vars per provider (presence only, never values).
+    lines.push("  Credentials (environment):".to_string());
+    let env_vars = [
+        ("meta", "MKT_META_ACCESS_TOKEN"),
+        ("google", "MKT_GOOGLE_ACCESS_TOKEN"),
+        ("google", "MKT_GOOGLE_DEVELOPER_TOKEN"),
+        ("tiktok", "MKT_TIKTOK_ACCESS_TOKEN"),
+        ("linkedin", "MKT_LINKEDIN_ACCESS_TOKEN"),
+    ];
+    for (provider, var) in env_vars {
+        if std::env::var(var).is_ok_and(|v| !v.is_empty()) {
+            lines.push(format!("  [ok] {provider}: {var} is set"));
+        } else {
+            lines.push(format!("  [--] {provider}: {var} not set"));
+        }
+    }
+
     Ok(lines.join("\n"))
 }

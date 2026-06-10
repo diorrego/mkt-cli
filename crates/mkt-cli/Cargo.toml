@@ -22,6 +22,7 @@ mkt-linkedin = { path = "../mkt-linkedin", optional = true }
 anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
+clap_complete.workspace = true
 secrecy.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

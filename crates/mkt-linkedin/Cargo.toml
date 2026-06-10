@@ -4,10 +4,21 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "LinkedIn Marketing provider for the mkt marketing CLI (stub)"
+description = "LinkedIn Marketing provider for the mkt marketing CLI"
 
 [lints]
 workspace = true
 
 [dependencies]
 mkt-core = { path = "../mkt-core" }
+chrono.workspace = true
+reqwest.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+mkt-testkit = { path = "../mkt-testkit" }
+tokio.workspace = true
+wiremock.workspace = true

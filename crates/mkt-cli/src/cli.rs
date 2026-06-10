@@ -110,7 +110,7 @@ pub enum Commands {
     Linkedin {
         /// Domain subcommand.
         #[command(subcommand)]
-        domain: StubDomain,
+        domain: LinkedinDomain,
     },
 
     /// List available providers and their capabilities.
@@ -124,6 +124,12 @@ pub enum Commands {
         /// Profile action.
         #[command(subcommand)]
         action: ProfileAction,
+    },
+
+    /// Generate shell completions (bash, zsh, fish, powershell, elvish).
+    Completions {
+        /// Target shell.
+        shell: clap_complete::Shell,
     },
 }
 
@@ -202,6 +208,28 @@ pub enum GoogleDomain {
     },
 }
 
+/// LinkedIn provider domain subcommands.
+#[cfg(feature = "linkedin")]
+#[derive(Subcommand, Debug)]
+pub enum LinkedinDomain {
+    /// Campaign management.
+    ///
+    /// For create, --objective is the LinkedIn objective type
+    /// (`LEAD_GENERATION`, `WEBSITE_VISIT`, `BRAND_AWARENESS`, ...) and
+    /// --extra must carry the campaign group URN.
+    Campaign {
+        /// Campaign action.
+        #[command(subcommand)]
+        action: CampaignAction,
+    },
+    /// Insights / analytics (adAnalytics).
+    Insight {
+        /// Insight action.
+        #[command(subcommand)]
+        action: InsightAction,
+    },
+}
+
 /// Campaign actions.
 #[derive(Subcommand, Debug)]
 pub enum CampaignAction {
@@ -233,9 +261,13 @@ pub enum CampaignAction {
         /// Initial status.
         #[arg(long)]
         status: Option<String>,
-        /// Daily budget in currency units (required for Google Ads).
+        /// Daily budget in currency units (required for Google Ads and LinkedIn).
         #[arg(long)]
         daily_budget: Option<f64>,
+        /// Provider-specific extra fields as inline JSON
+        /// (e.g. LinkedIn: '{"campaignGroup":"urn:li:sponsoredCampaignGroup:123"}').
+        #[arg(long)]
+        extra: Option<String>,
         /// Load from JSON file.
         #[arg(long)]
         file: Option<PathBuf>,
