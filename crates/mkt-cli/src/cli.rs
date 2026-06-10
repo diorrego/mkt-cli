@@ -102,7 +102,7 @@ pub enum Commands {
     Tiktok {
         /// Domain subcommand.
         #[command(subcommand)]
-        domain: StubDomain,
+        domain: TiktokDomain,
     },
 
     /// LinkedIn Marketing provider.
@@ -201,6 +201,33 @@ pub enum GoogleDomain {
         action: CampaignAction,
     },
     /// Insights / analytics (GAQL metrics).
+    Insight {
+        /// Insight action.
+        #[command(subcommand)]
+        action: InsightAction,
+    },
+}
+
+/// TikTok provider domain subcommands.
+#[cfg(feature = "tiktok")]
+#[derive(Subcommand, Debug)]
+pub enum TiktokDomain {
+    /// Campaign management.
+    ///
+    /// For create, --objective is the TikTok objective type
+    /// (TRAFFIC, `LEAD_GENERATION`, `WEB_CONVERSIONS`, REACH, ...).
+    Campaign {
+        /// Campaign action.
+        #[command(subcommand)]
+        action: CampaignAction,
+    },
+    /// Audience management (DMP custom audiences; list only).
+    Audience {
+        /// Audience action.
+        #[command(subcommand)]
+        action: AudienceAction,
+    },
+    /// Insights / analytics (integrated report).
     Insight {
         /// Insight action.
         #[command(subcommand)]
@@ -509,11 +536,4 @@ pub enum ProfileAction {
         /// Profile name.
         name: String,
     },
-}
-
-/// Stub domain for providers not yet implemented.
-#[derive(Subcommand, Debug)]
-pub enum StubDomain {
-    /// This provider is not yet implemented.
-    Status,
 }

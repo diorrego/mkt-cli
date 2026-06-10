@@ -36,7 +36,7 @@ predicates.workspace = true
 mkt-testkit = { path = "../mkt-testkit" }
 
 [features]
-default = ["meta", "google"]
+default = ["meta", "google", "tiktok", "linkedin"]
 meta = ["dep:mkt-meta"]
 google = ["dep:mkt-google"]
 tiktok = ["dep:mkt-tiktok"]

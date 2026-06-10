@@ -104,7 +104,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Google { domain } => handle_google(domain, &cli, output_format).await,
 
         #[cfg(feature = "tiktok")]
-        Commands::Tiktok { .. } => Ok("TikTok provider is not yet implemented.".into()),
+        Commands::Tiktok { domain } => handle_tiktok(domain, &cli, output_format).await,
 
         #[cfg(feature = "linkedin")]
         Commands::Linkedin { domain } => handle_linkedin(domain, &cli, output_format).await,
@@ -287,6 +287,68 @@ async fn handle_google(
                 .map_err(anyhow::Error::from)
         }
         cli::GoogleDomain::Insight { action } => {
+            commands::insight::execute(action, &provider, output_format)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+    }
+}
+
+#[cfg(feature = "tiktok")]
+async fn handle_tiktok(
+    domain: &cli::TiktokDomain,
+    cli: &Cli,
+    output_format: mkt_core::output::OutputFormat,
+) -> anyhow::Result<String> {
+    use mkt_core::auth;
+    use mkt_core::config::MktConfig;
+    use mkt_core::error::MktError;
+    use secrecy::ExposeSecret;
+
+    let config = if let Some(path) = &cli.config {
+        MktConfig::load_from_file(path)?
+    } else {
+        MktConfig::load()?
+    };
+
+    let profile = config.profile(&cli.profile).ok();
+    let tt_config = profile.and_then(|p| p.tiktok.as_ref());
+
+    let token = auth::resolve_token(
+        "tiktok",
+        "MKT_TIKTOK_ACCESS_TOKEN",
+        tt_config.and_then(|c| c.access_token.as_deref()),
+    )?;
+
+    let advertiser_id = std::env::var("MKT_TIKTOK_ADVERTISER_ID")
+        .ok()
+        .or_else(|| tt_config.and_then(|c| c.advertiser_id.clone()))
+        .ok_or_else(|| {
+            MktError::auth_error(
+                "tiktok",
+                "No advertiser ID found. Set MKT_TIKTOK_ADVERTISER_ID or configure it \
+                 in your profile.",
+            )
+        })?;
+
+    let client = mkt_tiktok::TikTokClient::new(
+        secrecy::SecretString::from(token.expose_secret().to_string()),
+        advertiser_id,
+    )?;
+    let provider = mkt_tiktok::TikTokProvider::new(client);
+
+    match domain {
+        cli::TiktokDomain::Campaign { action } => {
+            commands::campaign::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+        cli::TiktokDomain::Audience { action } => {
+            commands::audience::execute(action, &provider, output_format, cli.dry_run)
+                .await
+                .map_err(anyhow::Error::from)
+        }
+        cli::TiktokDomain::Insight { action } => {
             commands::insight::execute(action, &provider, output_format)
                 .await
                 .map_err(anyhow::Error::from)
