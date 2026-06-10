@@ -131,6 +131,24 @@ pub enum Commands {
         /// Target shell.
         shell: clap_complete::Shell,
     },
+
+    /// MCP (Model Context Protocol) server for chat agents without a
+    /// terminal (Claude Desktop, `ChatGPT`). Coding agents should use the
+    /// CLI directly.
+    #[cfg(feature = "mcp")]
+    Mcp {
+        /// MCP action.
+        #[command(subcommand)]
+        action: McpAction,
+    },
+}
+
+/// MCP server actions.
+#[cfg(feature = "mcp")]
+#[derive(Subcommand, Debug)]
+pub enum McpAction {
+    /// Serve MCP over stdio (logs go to stderr).
+    Serve,
 }
 
 /// Meta provider domain subcommands.

@@ -195,3 +195,47 @@ fn completions_command_generates_bash_script() {
         .success()
         .stdout(predicate::str::contains("_mkt"));
 }
+
+/// The MCP server must answer initialize and tools/list over stdio with
+/// the consolidated tool set.
+#[test]
+fn mcp_serve_lists_tools_over_stdio() {
+    let requests = concat!(
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0.0.0"}}}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+        "\n",
+    );
+
+    let output = Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["mcp", "serve"])
+        .env("MKT_CONFIG_DIR", "/tmp/mkt-test-nonexistent")
+        .write_stdin(requests)
+        .timeout(std::time::Duration::from_secs(20))
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(r#""name":"mkt""#),
+        "initialize should report the server name: {stdout}"
+    );
+    for tool in [
+        "campaign_list",
+        "campaign_get",
+        "campaign_create",
+        "campaign_set_status",
+        "insights_get",
+        "provider_health",
+    ] {
+        assert!(stdout.contains(tool), "tools/list missing {tool}: {stdout}");
+    }
+    // Spend-safety must be stated where the model can see it.
+    assert!(
+        stdout.contains("PAUSED"),
+        "tool descriptions must state the paused-by-default contract: {stdout}"
+    );
+}

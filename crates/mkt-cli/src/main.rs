@@ -2,6 +2,9 @@
 
 mod cli;
 mod commands;
+#[cfg(feature = "mcp")]
+mod mcp;
+mod providers;
 
 use clap::Parser;
 
@@ -18,9 +21,12 @@ fn main() -> std::process::ExitCode {
     } else {
         "info"
     };
+    // Diagnostics always go to stderr: stdout is reserved for data
+    // (and for the MCP protocol when serving).
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
+        .with_writer(std::io::stderr)
         .init();
 
     // Build tokio runtime
@@ -97,6 +103,14 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             Ok(String::from_utf8_lossy(&buf).into_owned())
         }
 
+        #[cfg(feature = "mcp")]
+        Commands::Mcp { action } => match action {
+            cli::McpAction::Serve => {
+                mcp::serve(cli.profile.clone()).await?;
+                Ok(String::new())
+            }
+        },
+
         #[cfg(feature = "meta")]
         Commands::Meta { domain } => handle_meta(domain, &cli, output_format).await,
 
@@ -112,7 +126,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
 
     match result {
         Ok(output) => {
-            if !cli.quiet {
+            if !cli.quiet && !output.is_empty() {
                 println!("{output}");
             }
             Ok(())
@@ -127,46 +141,8 @@ async fn handle_meta(
     cli: &Cli,
     output_format: mkt_core::output::OutputFormat,
 ) -> anyhow::Result<String> {
-    use mkt_core::auth;
-    use mkt_core::config::MktConfig;
-    use secrecy::ExposeSecret;
-
-    // Load config and resolve token
-    let config = if let Some(path) = &cli.config {
-        MktConfig::load_from_file(path)?
-    } else {
-        MktConfig::load()?
-    };
-
-    let profile = config.profile(&cli.profile).ok();
-    let meta_config = profile.and_then(|p| p.meta.as_ref());
-
-    let token = auth::resolve_token(
-        "meta",
-        "MKT_META_ACCESS_TOKEN",
-        meta_config.and_then(|c| c.access_token.as_deref()),
-    )?;
-
-    let ad_account_id = meta_config
-        .and_then(|c| c.ad_account_id.clone())
-        .or_else(|| std::env::var("MKT_META_AD_ACCOUNT_ID").ok())
-        .unwrap_or_else(|| "act_unknown".to_string());
-
-    let api_version = meta_config
-        .and_then(|c| c.api_version.as_deref())
-        .unwrap_or("v25.0");
-
-    let client = mkt_meta::MetaClient::new(
-        secrecy::SecretString::from(token.expose_secret().to_string()),
-        ad_account_id,
-        Some(api_version),
-    )?;
-
-    let provider = mkt_meta::MetaProvider::new(
-        client,
-        meta_config.and_then(|c| c.page_id.clone()),
-        meta_config.and_then(|c| c.ig_user_id.clone()),
-    );
+    let config = providers::load_config(cli.config.as_deref())?;
+    let provider = providers::build_meta(&config, &cli.profile)?;
 
     match domain {
         cli::MetaDomain::Campaign { action } => {
@@ -214,71 +190,8 @@ async fn handle_google(
     cli: &Cli,
     output_format: mkt_core::output::OutputFormat,
 ) -> anyhow::Result<String> {
-    use mkt_core::config::MktConfig;
-    use mkt_core::error::MktError;
-
-    // Load config and resolve credentials.
-    let config = if let Some(path) = &cli.config {
-        MktConfig::load_from_file(path)?
-    } else {
-        MktConfig::load()?
-    };
-
-    let profile = config.profile(&cli.profile).ok();
-    let google_config = profile.and_then(|p| p.google.as_ref());
-
-    let developer_token = std::env::var("MKT_GOOGLE_DEVELOPER_TOKEN")
-        .ok()
-        .or_else(|| google_config.and_then(|c| c.developer_token.clone()))
-        .ok_or_else(|| {
-            MktError::auth_error(
-                "google",
-                "No developer token found. Set MKT_GOOGLE_DEVELOPER_TOKEN or configure it \
-                 in your profile.",
-            )
-        })?;
-
-    let customer_id = std::env::var("MKT_GOOGLE_CUSTOMER_ID")
-        .ok()
-        .or_else(|| google_config.and_then(|c| c.customer_id.clone()))
-        .ok_or_else(|| {
-            MktError::auth_error(
-                "google",
-                "No customer ID found. Set MKT_GOOGLE_CUSTOMER_ID or configure it in your \
-                 profile.",
-            )
-        })?;
-
-    // Access token: direct env var wins; otherwise exchange the refresh token.
-    let access_token = if let Ok(token) = std::env::var("MKT_GOOGLE_ACCESS_TOKEN") {
-        secrecy::SecretString::from(token)
-    } else {
-        let (client_id, client_secret, refresh_token) = google_config
-            .and_then(|c| {
-                Some((
-                    c.client_id.clone()?,
-                    c.client_secret.clone()?,
-                    c.refresh_token.clone()?,
-                ))
-            })
-            .ok_or_else(|| {
-                MktError::auth_error(
-                    "google",
-                    "No access token found. Set MKT_GOOGLE_ACCESS_TOKEN, or configure \
-                     client_id, client_secret, and refresh_token in your profile.",
-                )
-            })?;
-        mkt_google::fetch_access_token(
-            &client_id,
-            &client_secret,
-            &refresh_token,
-            mkt_google::GOOGLE_TOKEN_URL,
-        )
-        .await?
-    };
-
-    let client = mkt_google::GoogleClient::new(access_token, developer_token, &customer_id, None)?;
-    let provider = mkt_google::GoogleProvider::new(client);
+    let config = providers::load_config(cli.config.as_deref())?;
+    let provider = providers::build_google(&config, &cli.profile).await?;
 
     match domain {
         cli::GoogleDomain::Campaign { action } => {
@@ -300,42 +213,8 @@ async fn handle_tiktok(
     cli: &Cli,
     output_format: mkt_core::output::OutputFormat,
 ) -> anyhow::Result<String> {
-    use mkt_core::auth;
-    use mkt_core::config::MktConfig;
-    use mkt_core::error::MktError;
-    use secrecy::ExposeSecret;
-
-    let config = if let Some(path) = &cli.config {
-        MktConfig::load_from_file(path)?
-    } else {
-        MktConfig::load()?
-    };
-
-    let profile = config.profile(&cli.profile).ok();
-    let tt_config = profile.and_then(|p| p.tiktok.as_ref());
-
-    let token = auth::resolve_token(
-        "tiktok",
-        "MKT_TIKTOK_ACCESS_TOKEN",
-        tt_config.and_then(|c| c.access_token.as_deref()),
-    )?;
-
-    let advertiser_id = std::env::var("MKT_TIKTOK_ADVERTISER_ID")
-        .ok()
-        .or_else(|| tt_config.and_then(|c| c.advertiser_id.clone()))
-        .ok_or_else(|| {
-            MktError::auth_error(
-                "tiktok",
-                "No advertiser ID found. Set MKT_TIKTOK_ADVERTISER_ID or configure it \
-                 in your profile.",
-            )
-        })?;
-
-    let client = mkt_tiktok::TikTokClient::new(
-        secrecy::SecretString::from(token.expose_secret().to_string()),
-        advertiser_id,
-    )?;
-    let provider = mkt_tiktok::TikTokProvider::new(client);
+    let config = providers::load_config(cli.config.as_deref())?;
+    let provider = providers::build_tiktok(&config, &cli.profile)?;
 
     match domain {
         cli::TiktokDomain::Campaign { action } => {
@@ -362,42 +241,8 @@ async fn handle_linkedin(
     cli: &Cli,
     output_format: mkt_core::output::OutputFormat,
 ) -> anyhow::Result<String> {
-    use mkt_core::auth;
-    use mkt_core::config::MktConfig;
-    use mkt_core::error::MktError;
-    use secrecy::ExposeSecret;
-
-    let config = if let Some(path) = &cli.config {
-        MktConfig::load_from_file(path)?
-    } else {
-        MktConfig::load()?
-    };
-
-    let profile = config.profile(&cli.profile).ok();
-    let li_config = profile.and_then(|p| p.linkedin.as_ref());
-
-    let token = auth::resolve_token(
-        "linkedin",
-        "MKT_LINKEDIN_ACCESS_TOKEN",
-        li_config.and_then(|c| c.access_token.as_deref()),
-    )?;
-
-    let ad_account_id = std::env::var("MKT_LINKEDIN_AD_ACCOUNT_ID")
-        .ok()
-        .or_else(|| li_config.and_then(|c| c.ad_account_id.clone()))
-        .ok_or_else(|| {
-            MktError::auth_error(
-                "linkedin",
-                "No ad account ID found. Set MKT_LINKEDIN_AD_ACCOUNT_ID or configure it \
-                 in your profile.",
-            )
-        })?;
-
-    let client = mkt_linkedin::LinkedInClient::new(
-        secrecy::SecretString::from(token.expose_secret().to_string()),
-        ad_account_id,
-    )?;
-    let provider = mkt_linkedin::LinkedInProvider::new(client);
+    let config = providers::load_config(cli.config.as_deref())?;
+    let provider = providers::build_linkedin(&config, &cli.profile)?;
 
     match domain {
         cli::LinkedinDomain::Campaign { action } => {
