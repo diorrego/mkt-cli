@@ -150,8 +150,14 @@ impl MarketingProvider for TikTokProvider {
         input: &CreateCampaignInput,
     ) -> impl std::future::Future<Output = Result<Campaign>> + Send {
         async move {
-            let body =
-                mapping::domain_to_tiktok_create_campaign(input, self.client.advertiser_id());
+            // A fresh request_id lets TikTok deduplicate network-level
+            // retries instead of creating a second campaign.
+            let request_id = uuid::Uuid::new_v4().to_string();
+            let body = mapping::domain_to_tiktok_create_campaign(
+                input,
+                self.client.advertiser_id(),
+                &request_id,
+            );
             let data = self.client.post("campaign/create/", &body).await?;
 
             let new_id = data["campaign_id"]
@@ -254,7 +260,14 @@ impl MarketingProvider for TikTokProvider {
                 serde_json::json!(query.metrics)
             }
             .to_string();
-            let dimensions = serde_json::json!(["campaign_id", "stat_time_day"]).to_string();
+            // Lifetime metrics reject time dimensions, so stat_time_day
+            // only applies to date-bounded queries.
+            let dimensions = if query.date_range.is_some() {
+                serde_json::json!(["campaign_id", "stat_time_day"])
+            } else {
+                serde_json::json!(["campaign_id"])
+            }
+            .to_string();
 
             let mut params: Vec<(&str, String)> = vec![
                 ("advertiser_id", self.client.advertiser_id().to_string()),

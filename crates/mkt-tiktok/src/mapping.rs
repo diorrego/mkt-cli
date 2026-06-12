@@ -112,10 +112,12 @@ pub fn tiktok_campaign_to_domain(raw: &serde_json::Value) -> Result<Campaign> {
 /// `objective` carries the TikTok `objective_type` (`TRAFFIC`,
 /// `LEAD_GENERATION`, `WEB_CONVERSIONS`, ...). New campaigns default to
 /// `DISABLE` (paused) so spend is an explicit decision — note this
-/// inverts TikTok's own default of `ENABLE`.
+/// inverts TikTok's own default of `ENABLE`. `request_id` is TikTok's
+/// idempotency token: retries reusing it do not create a second campaign.
 pub fn domain_to_tiktok_create_campaign(
     input: &CreateCampaignInput,
     advertiser_id: &str,
+    request_id: &str,
 ) -> serde_json::Value {
     let operation_status = input
         .status
@@ -127,6 +129,7 @@ pub fn domain_to_tiktok_create_campaign(
         "campaign_name": input.name,
         "objective_type": input.objective,
         "operation_status": operation_status,
+        "request_id": request_id,
     });
 
     if let Some(budget) = &input.budget {
@@ -362,8 +365,9 @@ mod tests {
             }),
             extra: None,
         };
-        let body = domain_to_tiktok_create_campaign(&input, "123");
+        let body = domain_to_tiktok_create_campaign(&input, "123", "req-1");
         assert_eq!(body["advertiser_id"], "123");
+        assert_eq!(body["request_id"], "req-1");
         assert_eq!(body["operation_status"], "DISABLE");
         assert_eq!(body["budget_mode"], "BUDGET_MODE_DAY");
         assert!((body["budget"].as_f64().expect("budget") - 50.0).abs() < f64::EPSILON);
@@ -378,7 +382,7 @@ mod tests {
             budget: None,
             extra: None,
         };
-        let body = domain_to_tiktok_create_campaign(&input, "123");
+        let body = domain_to_tiktok_create_campaign(&input, "123", "req-2");
         assert_eq!(body["budget_mode"], "BUDGET_MODE_INFINITE");
         assert!(body.get("budget").is_none());
     }
