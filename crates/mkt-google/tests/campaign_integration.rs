@@ -204,6 +204,10 @@ async fn test_create_campaign_creates_budget_then_campaign() {
                     "status": "PAUSED",
                     "advertisingChannelType": "SEARCH",
                     "campaignBudget": "customers/1234567890/campaignBudgets/999003",
+                    // Mandatory since 2026-04-01: mutates fail without the
+                    // EU political advertising declaration (EU-PAR).
+                    "containsEuPoliticalAdvertising":
+                        "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
                 }
             }]
         })))
@@ -402,6 +406,114 @@ async fn test_get_insights_maps_metrics_rows() {
     assert_eq!(
         row.dimensions.get("campaign.name").map(String::as_str),
         Some("Search — Brand Terms")
+    );
+}
+
+/// GAQL requires every query that selects a core date segment to bound it
+/// with a finite date range. Without an explicit range the provider must
+/// default one instead of emitting an invalid query.
+#[tokio::test]
+async fn test_get_insights_without_range_defaults_to_last_30_days() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path(format!("/customers/{CUSTOMER_ID}/googleAds:search")))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(fixtures::insights_search_response()),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    provider
+        .get_insights(&InsightsQuery::default())
+        .await
+        .expect("get_insights should succeed");
+
+    let requests = server.received_requests().await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let gaql = body["query"].as_str().unwrap();
+    assert!(
+        gaql.contains("WHERE segments.date DURING LAST_30_DAYS"),
+        "queries selecting segments.date must carry a finite range: {gaql}"
+    );
+}
+
+/// A bidding strategy passed via `extra` must replace the default
+/// `manualCpc`, not coexist with it — the campaign bidding strategy is a
+/// oneof and the API rejects two members.
+#[tokio::test]
+async fn test_create_campaign_extra_bidding_strategy_replaces_manual_cpc() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/customers/{CUSTOMER_ID}/campaignBudgets:mutate"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixtures::budget_mutate_response()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path(format!("/customers/{CUSTOMER_ID}/campaigns:mutate")))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(fixtures::campaign_mutate_response()),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path(format!("/customers/{CUSTOMER_ID}/googleAds:search")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "results": [{
+                "campaign": {
+                    "resourceName": "customers/1234567890/campaigns/333333",
+                    "id": "333333",
+                    "name": "PMax Campaign",
+                    "status": "PAUSED",
+                    "advertisingChannelType": "PERFORMANCE_MAX",
+                    "startDate": "2026-06-12"
+                },
+                "campaignBudget": { "amountMicros": "5000000" }
+            }]
+        })))
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let input = CreateCampaignInput {
+        name: "PMax Campaign".into(),
+        objective: "PERFORMANCE_MAX".into(),
+        status: Some(CampaignStatus::Paused),
+        budget: Some(Budget {
+            amount: 5.0,
+            currency: "USD".into(),
+            kind: BudgetKind::Daily,
+        }),
+        extra: Some(serde_json::json!({ "maximizeConversionValue": {} })),
+    };
+    provider
+        .create_campaign(&input)
+        .await
+        .expect("create_campaign should succeed");
+
+    let requests = server.received_requests().await.unwrap();
+    let campaign_body = requests
+        .iter()
+        .find(|r| r.url.path().ends_with("campaigns:mutate"))
+        .map(|r| serde_json::from_slice::<serde_json::Value>(&r.body).unwrap())
+        .expect("campaigns:mutate request should exist");
+    let create = &campaign_body["operations"][0]["create"];
+    assert!(
+        create.get("maximizeConversionValue").is_some(),
+        "extra bidding strategy must be forwarded: {create}"
+    );
+    assert!(
+        create.get("manualCpc").is_none(),
+        "default manualCpc must yield to the explicit strategy: {create}"
     );
 }
 
