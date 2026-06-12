@@ -322,7 +322,10 @@ pub fn meta_audience_to_domain(raw: &serde_json::Value) -> Result<Audience> {
     let id = extract_str(raw, "id")?;
     let name = extract_str(raw, "name")?;
     let description = raw["description"].as_str().map(String::from);
-    let size = raw["approximate_count"].as_u64();
+    // v25.0 replaced approximate_count with lower/upper bounds.
+    let size = raw["approximate_count_lower_bound"]
+        .as_u64()
+        .or_else(|| raw["approximate_count_upper_bound"].as_u64());
     let subtype = raw["subtype"].as_str().unwrap_or("CUSTOM");
     let audience_type = match subtype {
         "LOOKALIKE" => AudienceType::Lookalike,
@@ -824,7 +827,7 @@ mod tests {
             "id": "23842000001",
             "name": "Top Customers",
             "description": "Our best buyers",
-            "approximate_count": 15000,
+            "approximate_count_lower_bound": 15000,
             "subtype": "CUSTOM"
         });
         let aud = meta_audience_to_domain(&raw).expect("should parse");

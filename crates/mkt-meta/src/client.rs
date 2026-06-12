@@ -138,6 +138,30 @@ impl MetaClient {
         Self::parse_response(response).await
     }
 
+    /// Download raw bytes from an absolute URL (e.g. an image asset to
+    /// re-upload as Base64). Unauthenticated: the URL is external to the
+    /// Graph API.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MktError::ApiError`] for non-2xx responses and
+    /// [`MktError::Http`] for transport failures.
+    #[instrument(skip(self), fields(provider = "meta"))]
+    pub async fn fetch_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        self.rate_limiter.acquire(1).await?;
+        let response = self.http.get(url).send().await?;
+        let status = response.status().as_u16();
+        if !(200..300).contains(&status) {
+            return Err(MktError::ApiError {
+                provider: "meta".into(),
+                status,
+                message: format!("downloading {url} failed"),
+                retry_after: None,
+            });
+        }
+        Ok(response.bytes().await?.to_vec())
+    }
+
     /// Parse a response, returning either the JSON body or a mapped error.
     async fn parse_response(response: reqwest::Response) -> Result<serde_json::Value> {
         let status = response.status().as_u16();
