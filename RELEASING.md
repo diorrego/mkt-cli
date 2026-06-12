@@ -55,6 +55,8 @@ done
    ```
 6. Verify the Release workflow: binaries attached to the GitHub Release
    and new versions visible on crates.io.
+7. Regenerate `mktcli.com/public/llms-full.txt` from the updated README,
+   AGENTS.md, and CHANGELOG so AI agents read current docs.
 
 `mkt-testkit` is a path-only dev-dependency and is intentionally **not**
 published.
