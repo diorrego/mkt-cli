@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-12
+
+Reliability release: every provider call now retries transient failures
+safely, and all four integrations were audited against the official API
+docs current as of June 2026.
+
+### Added
+
+- Retry with exponential backoff and jitter in `mkt-cli-core`: reads
+  retry transient failures (429/5xx/transport) up to 4 attempts; writes
+  retry only rate limits and connection failures so a timed-out create
+  can never duplicate spend. Server `Retry-After` hints override the
+  computed backoff (clamped to 120s)
+- All provider clients parse `Retry-After` and surface HTTP 429 as a
+  structured rate-limit error with the server's wait hint
+- Shared HTTP client: 10s connect timeout, TCP keepalive, contactable
+  User-Agent (`mkt/x.y.z (+https://mktcli.com)`)
+- TikTok: `campaign/create` sends a UUID `request_id` so network-level
+  retries deduplicate server-side instead of creating duplicates
+- MCP server: integration tests covering the `tools/call` error contract
+  (structured `[error_type]` tags, recovery suggestions, no token leakage)
+- Release workflow publishes all crates to crates.io via Trusted
+  Publishing (OIDC) in dependency order; `RELEASING.md` documents the flow
+
+### Fixed
+
+- Google Ads: campaign creation now sends the mandatory EU political
+  advertising declaration (`containsEuPoliticalAdvertising`, default
+  `DOES_NOT_CONTAIN…`, overridable via `--extra`) — required by the API
+  since 2026-04-01; without it every create failed
+- Google Ads: `insight get` without `--date-range` now defaults to
+  `LAST_30_DAYS` instead of emitting GAQL that the API rejects
+- Google Ads: a bidding strategy passed via `--extra` replaces the
+  `manualCpc` default instead of producing two members of the oneof
+- LinkedIn: `insight get` always sends the required `dateRange`
+  (defaulting to the last 30 days) instead of a guaranteed 400
+- LinkedIn: more than 20 metrics per analytics request is rejected
+  locally with a validation error (documented API maximum)
+- LinkedIn: deleting a `DRAFT` campaign uses hard DELETE as documented;
+  other statuses still transition to `PENDING_DELETION`
+- Meta: audience reads request `approximate_count_lower_bound`/`_upper_bound`
+  (v25.0 removed `approximate_count`) and `time_created`
+- Meta: `media upload-image --url` downloads the asset and uploads it
+  Base64-encoded — the `adimages` edge has no `url` parameter
+- Meta: creating a creative without a configured `page_id` fails fast
+  with a validation error instead of sending the invalid `"me"`
+- TikTok: lifetime insights (no date range) no longer combine
+  `query_lifetime=true` with the unsupported `stat_time_day` dimension
+
 ## [0.1.1] - 2026-06-10
 
 ### Added

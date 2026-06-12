@@ -19,11 +19,11 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-mkt-cli-core = { path = "../mkt-core", version = "0.1.1" }
-mkt-meta = { path = "../mkt-meta", version = "0.1.1", optional = true }
-mkt-google = { path = "../mkt-google", version = "0.1.1", optional = true }
-mkt-tiktok = { path = "../mkt-tiktok", version = "0.1.1", optional = true }
-mkt-linkedin = { path = "../mkt-linkedin", version = "0.1.1", optional = true }
+mkt-cli-core = { path = "../mkt-core", version = "0.2.0" }
+mkt-meta = { path = "../mkt-meta", version = "0.2.0", optional = true }
+mkt-google = { path = "../mkt-google", version = "0.2.0", optional = true }
+mkt-tiktok = { path = "../mkt-tiktok", version = "0.2.0", optional = true }
+mkt-linkedin = { path = "../mkt-linkedin", version = "0.2.0", optional = true }
 anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
