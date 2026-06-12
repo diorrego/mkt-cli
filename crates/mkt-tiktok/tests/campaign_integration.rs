@@ -233,6 +233,20 @@ async fn test_create_campaign_posts_then_fetches() {
         .await
         .expect("create_campaign should succeed");
     assert_eq!(campaign.id.0, "1740687531023393");
+
+    // The create body must carry a request_id so network-level retries
+    // deduplicate instead of creating a second campaign.
+    let requests = server.received_requests().await.unwrap();
+    let create_body = requests
+        .iter()
+        .find(|r| r.url.path().ends_with("/campaign/create/"))
+        .map(|r| serde_json::from_slice::<serde_json::Value>(&r.body).unwrap())
+        .expect("create request should exist");
+    let request_id = create_body["request_id"].as_str().unwrap_or_default();
+    assert!(
+        !request_id.is_empty(),
+        "create must send an idempotency request_id: {create_body}"
+    );
     assert_eq!(campaign.status, CampaignStatus::Paused);
 }
 
@@ -328,14 +342,27 @@ async fn test_get_insights_maps_report_rows() {
         .and(path("/report/integrated/get/"))
         .and(query_param("report_type", "BASIC"))
         .and(query_param("data_level", "AUCTION_CAMPAIGN"))
+        .and(query_param("start_date", "2026-03-01"))
+        .and(query_param("end_date", "2026-03-02"))
         .respond_with(ResponseTemplate::new(200).set_body_json(fixtures::report_response()))
         .expect(1)
         .mount(&server)
         .await;
 
     let provider = make_provider(&server.uri());
+    let query = InsightsQuery {
+        date_range: Some(mkt_core::models::DateRange {
+            start: chrono::DateTime::parse_from_rfc3339("2026-03-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
+            end: chrono::DateTime::parse_from_rfc3339("2026-03-02T00:00:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
+        }),
+        ..Default::default()
+    };
     let report = provider
-        .get_insights(&InsightsQuery::default())
+        .get_insights(&query)
         .await
         .expect("get_insights should succeed");
 
@@ -371,6 +398,53 @@ async fn test_get_insights_maps_report_rows() {
             .iter()
             .any(|d| d == "campaign_id")
     );
+}
+
+/// Lifetime metrics do not support time dimensions: a query without a
+/// date range must send `query_lifetime=true` WITHOUT `stat_time_day`,
+/// or the API rejects the combination.
+#[tokio::test]
+async fn test_get_insights_lifetime_omits_time_dimension() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/report/integrated/get/"))
+        .and(query_param("query_lifetime", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "code": 0, "message": "OK", "request_id": "x",
+            "data": {
+                "list": [{
+                    "dimensions": { "campaign_id": "1680018437245954" },
+                    "metrics": { "spend": "1234.50", "impressions": "98765" }
+                }],
+                "page_info": { "page": 1, "page_size": 200, "total_number": 1, "total_page": 1 }
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let report = provider
+        .get_insights(&InsightsQuery::default())
+        .await
+        .expect("lifetime insights should succeed");
+    assert_eq!(report.rows.len(), 1);
+
+    let requests = server.received_requests().await.unwrap();
+    let dims = requests[0]
+        .url
+        .query_pairs()
+        .find(|(k, _)| k == "dimensions")
+        .map(|(_, v)| v.into_owned())
+        .expect("dimensions param");
+    let parsed: serde_json::Value = serde_json::from_str(&dims).unwrap();
+    let dims_array = parsed.as_array().unwrap();
+    assert!(
+        !dims_array.iter().any(|d| d == "stat_time_day"),
+        "lifetime queries must not request time dimensions: {parsed}"
+    );
+    assert!(dims_array.iter().any(|d| d == "campaign_id"));
 }
 
 // ── audiences ─────────────────────────────────────────────────────────────────
