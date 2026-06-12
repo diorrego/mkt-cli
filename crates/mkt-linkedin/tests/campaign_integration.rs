@@ -289,11 +289,21 @@ async fn test_update_campaign_sends_partial_update_patch() {
     assert_eq!(body["patch"]["$set"]["status"], "PAUSED");
 }
 
-/// Verify `delete_campaign` soft-deletes via `PARTIAL_UPDATE` to
-/// `PENDING_DELETION` (hard DELETE only works for drafts).
+/// Verify `delete_campaign` soft-deletes a non-draft campaign via
+/// `PARTIAL_UPDATE` to `PENDING_DELETION` (hard DELETE only works for
+/// drafts, so the provider checks the status first).
 #[tokio::test]
 async fn test_delete_campaign_sets_pending_deletion() {
     let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/adAccounts/{AD_ACCOUNT_ID}/adCampaigns/145282384"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixtures::campaign_get_response()))
+        .expect(1)
+        .mount(&server)
+        .await;
 
     Mock::given(method("POST"))
         .and(path(format!(
@@ -312,8 +322,46 @@ async fn test_delete_campaign_sets_pending_deletion() {
         .expect("delete_campaign should succeed");
 
     let requests = server.received_requests().await.unwrap();
-    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let patch_request = requests
+        .iter()
+        .find(|r| r.method == wiremock::http::Method::POST)
+        .expect("PARTIAL_UPDATE request should exist");
+    let body: serde_json::Value = serde_json::from_slice(&patch_request.body).unwrap();
     assert_eq!(body["patch"]["$set"]["status"], "PENDING_DELETION");
+}
+
+/// LinkedIn documents hard DELETE as the deletion method for `DRAFT`
+/// campaigns; `PENDING_DELETION` is not a documented transition for them.
+#[tokio::test]
+async fn test_delete_campaign_draft_uses_hard_delete() {
+    let server = MockServer::start().await;
+
+    let mut draft = fixtures::campaign_get_response();
+    draft["status"] = serde_json::json!("DRAFT");
+
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/adAccounts/{AD_ACCOUNT_ID}/adCampaigns/145282384"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(draft))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("DELETE"))
+        .and(path(format!(
+            "/adAccounts/{AD_ACCOUNT_ID}/adCampaigns/145282384"
+        )))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    provider
+        .delete_campaign(&CampaignId("145282384".into()))
+        .await
+        .expect("deleting a draft should hard-delete");
 }
 
 // ── insights ──────────────────────────────────────────────────────────────────
@@ -366,6 +414,32 @@ async fn test_get_insights_maps_analytics_elements() {
             "accounts=List(urn%3Ali%3AsponsoredAccount%3A{AD_ACCOUNT_ID})"
         )),
         "URN colons must be %3A-encoded inside List(): {raw_query}"
+    );
+    // dateRange.start is a required adAnalytics parameter: queries without
+    // an explicit range must still send a finite default.
+    assert!(
+        raw_query.contains("dateRange=(start:(year:"),
+        "adAnalytics requires dateRange; a default must be sent: {raw_query}"
+    );
+}
+
+/// adAnalytics accepts at most 20 metrics per request; reject locally with
+/// a validation error instead of a late server-side 400.
+#[tokio::test]
+async fn test_get_insights_rejects_more_than_20_metrics() {
+    let provider = make_provider("http://127.0.0.1:9"); // never reached
+
+    let query = InsightsQuery {
+        metrics: (0..21).map(|i| format!("metric{i}")).collect(),
+        ..Default::default()
+    };
+    let err = provider
+        .get_insights(&query)
+        .await
+        .expect_err("21 metrics must be rejected");
+    assert!(
+        matches!(err, mkt_core::error::MktError::ValidationError { .. }),
+        "expected ValidationError, got: {err:?}"
     );
 }
 

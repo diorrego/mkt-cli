@@ -2,8 +2,8 @@
 
 use mkt_core::error::{MktError, Result};
 use mkt_core::models::{
-    Campaign, CampaignFilters, CampaignId, CreateCampaignInput, InsightsQuery, InsightsReport,
-    Paginated, ProviderHealth, UpdateCampaignInput,
+    Campaign, CampaignFilters, CampaignId, CampaignStatus, CreateCampaignInput, InsightsQuery,
+    InsightsReport, Paginated, ProviderHealth, UpdateCampaignInput,
 };
 use mkt_core::provider::{MarketingProvider, ProviderCapabilities};
 use tracing::instrument;
@@ -159,18 +159,24 @@ impl MarketingProvider for LinkedInProvider {
         }
     }
 
-    /// Soft-delete: LinkedIn only allows hard DELETE for `DRAFT`
-    /// campaigns, so deletion sets status to `PENDING_DELETION`.
+    /// `DRAFT` campaigns are the only ones LinkedIn hard-deletes; every
+    /// other status transitions to `PENDING_DELETION` instead.
     #[instrument(skip(self))]
     fn delete_campaign(
         &self,
         id: &CampaignId,
     ) -> impl std::future::Future<Output = Result<()>> + Send {
         async move {
+            let path = format!("{}/{}", self.campaigns_path(), id.0);
+
+            let campaign = self.fetch_campaign(&id.0).await?;
+            if campaign.status == CampaignStatus::Draft {
+                return self.client.delete(&path).await;
+            }
+
             let patch = serde_json::json!({
                 "patch": { "$set": { "status": "PENDING_DELETION" } }
             });
-            let path = format!("{}/{}", self.campaigns_path(), id.0);
             let _resp = self
                 .client
                 .post(&path, &patch, Some("PARTIAL_UPDATE"))
@@ -187,6 +193,20 @@ impl MarketingProvider for LinkedInProvider {
         query: &InsightsQuery,
     ) -> impl std::future::Future<Output = Result<InsightsReport>> + Send {
         async move {
+            // adAnalytics accepts at most 20 metrics per request; fail
+            // fast locally instead of with a server-side 400.
+            const MAX_METRICS: usize = 20;
+            if query.metrics.len() > MAX_METRICS {
+                return Err(MktError::ValidationError {
+                    field: "metrics".into(),
+                    message: format!(
+                        "LinkedIn adAnalytics accepts at most {MAX_METRICS} metrics \
+                         per request, got {}",
+                        query.metrics.len()
+                    ),
+                });
+            }
+
             let fields = if query.metrics.is_empty() {
                 "impressions,clicks,costInLocalCurrency,dateRange,pivotValues".to_string()
             } else {
@@ -206,19 +226,26 @@ impl MarketingProvider for LinkedInProvider {
                  &accounts=List({account_urn})&fields={fields}"
             );
 
-            if let Some(range) = &query.date_range {
-                let date_range = format!(
-                    "&dateRange=(start:(year:{},month:{},day:{}),\
-                     end:(year:{},month:{},day:{}))",
-                    range.start.format("%Y"),
-                    range.start.format("%-m"),
-                    range.start.format("%-d"),
-                    range.end.format("%Y"),
-                    range.end.format("%-m"),
-                    range.end.format("%-d"),
-                );
-                raw_query.push_str(&date_range);
-            }
+            // dateRange.start is required by adAnalytics; default to the
+            // last 30 days when the caller does not bound the query.
+            let (start, end) = query.date_range.as_ref().map_or_else(
+                || {
+                    let end = chrono::Utc::now();
+                    (end - chrono::Duration::days(30), end)
+                },
+                |range| (range.start, range.end),
+            );
+            let date_range = format!(
+                "&dateRange=(start:(year:{},month:{},day:{}),\
+                 end:(year:{},month:{},day:{}))",
+                start.format("%Y"),
+                start.format("%-m"),
+                start.format("%-d"),
+                end.format("%Y"),
+                end.format("%-m"),
+                end.format("%-d"),
+            );
+            raw_query.push_str(&date_range);
 
             let resp = self.client.get_raw("adAnalytics", &raw_query).await?;
             mapping::linkedin_analytics_to_domain(&resp)
