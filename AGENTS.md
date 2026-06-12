@@ -45,6 +45,11 @@ mkt [global flags] <provider> <domain> <action> [flags]
 | 6    | feature not supported by the provider    | run `mkt providers`                |
 | 7    | provider API rejected the request        | inspect `error.message`            |
 
+Note: since 0.2.0 `mkt` already retries transient failures internally
+(exponential backoff honoring `Retry-After`; reads up to 4 attempts, writes
+only on rate limits / connection failures). An exit code 5 means those
+retries were exhausted — wait the suggested delay before trying again.
+
 ## Safety rules (this tool spends real money)
 
 1. **Always `--dry-run` first** on any mutating command (`create`, `update`,
