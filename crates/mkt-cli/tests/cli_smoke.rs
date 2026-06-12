@@ -32,6 +32,21 @@ fn providers_command_lists_meta() {
         .stdout(predicate::str::contains("meta"));
 }
 
+/// All four providers ship in the default feature set; a regression in
+/// feature gating must not silently drop one from the binary.
+#[test]
+fn providers_command_lists_all_default_providers() {
+    Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["providers"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("meta"))
+        .stdout(predicate::str::contains("google"))
+        .stdout(predicate::str::contains("tiktok"))
+        .stdout(predicate::str::contains("linkedin"));
+}
+
 #[test]
 fn doctor_reports_missing_config() {
     Command::cargo_bin("mkt")
