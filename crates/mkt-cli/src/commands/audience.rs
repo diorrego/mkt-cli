@@ -51,7 +51,7 @@ pub async fn execute(
     }
 }
 
-/// Build one [`AudienceUser`] per identifier flag.
+/// Build one [`mkt_core::models::AudienceUser`] per identifier flag.
 fn build_users(emails: &[String], phones: &[String]) -> Vec<mkt_core::models::AudienceUser> {
     let mut users: Vec<mkt_core::models::AudienceUser> = Vec::new();
     for email in emails {
