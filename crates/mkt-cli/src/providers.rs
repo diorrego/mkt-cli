@@ -51,11 +51,14 @@ pub fn build_meta(
         Some(api_version),
     )?;
 
-    Ok(mkt_meta::MetaProvider::new(
-        client,
-        meta_config.and_then(|c| c.page_id.clone()),
-        meta_config.and_then(|c| c.ig_user_id.clone()),
-    ))
+    let page_id = meta_config
+        .and_then(|c| c.page_id.clone())
+        .or_else(|| std::env::var("MKT_META_PAGE_ID").ok());
+    let ig_user_id = meta_config
+        .and_then(|c| c.ig_user_id.clone())
+        .or_else(|| std::env::var("MKT_META_IG_USER_ID").ok());
+
+    Ok(mkt_meta::MetaProvider::new(client, page_id, ig_user_id))
 }
 
 /// Build a Google Ads provider for the given profile.
@@ -95,21 +98,32 @@ pub async fn build_google(
     let access_token = if let Ok(token) = std::env::var("MKT_GOOGLE_ACCESS_TOKEN") {
         secrecy::SecretString::from(token)
     } else {
-        let (client_id, client_secret, refresh_token) = google_config
-            .and_then(|c| {
-                Some((
-                    c.client_id.clone()?,
-                    c.client_secret.clone()?,
-                    c.refresh_token.clone()?,
-                ))
-            })
-            .ok_or_else(|| {
-                MktError::auth_error(
-                    "google",
-                    "No access token found. Set MKT_GOOGLE_ACCESS_TOKEN, or configure \
-                     client_id, client_secret, and refresh_token in your profile.",
-                )
-            })?;
+        // The OAuth trio resolves env-first like every other credential.
+        let trio_from_env = (
+            std::env::var("MKT_GOOGLE_CLIENT_ID").ok(),
+            std::env::var("MKT_GOOGLE_CLIENT_SECRET").ok(),
+            std::env::var("MKT_GOOGLE_REFRESH_TOKEN").ok(),
+        );
+        let (client_id, client_secret, refresh_token) = match trio_from_env {
+            (Some(id), Some(secret), Some(refresh)) => (id, secret, refresh),
+            _ => google_config
+                .and_then(|c| {
+                    Some((
+                        c.client_id.clone()?,
+                        c.client_secret.clone()?,
+                        c.refresh_token.clone()?,
+                    ))
+                })
+                .ok_or_else(|| {
+                    MktError::auth_error(
+                        "google",
+                        "No access token found. Set MKT_GOOGLE_ACCESS_TOKEN, set the \
+                         MKT_GOOGLE_CLIENT_ID/CLIENT_SECRET/REFRESH_TOKEN trio, or \
+                         configure client_id, client_secret, and refresh_token in \
+                         your profile.",
+                    )
+                })?,
+        };
         mkt_google::fetch_access_token(
             &client_id,
             &client_secret,

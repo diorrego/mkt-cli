@@ -54,6 +54,16 @@ sudo mv mkt /usr/local/bin/
 
 ### 1. Set your credentials
 
+Every credential resolves from an environment variable first, then from the
+profile in `~/.config/mkt/config.toml`:
+
+| Provider | Required | Optional |
+|----------|----------|----------|
+| Meta | `MKT_META_ACCESS_TOKEN`, `MKT_META_AD_ACCOUNT_ID` | `MKT_META_PAGE_ID` (posts/creatives), `MKT_META_IG_USER_ID` (Instagram) |
+| Google Ads | `MKT_GOOGLE_DEVELOPER_TOKEN`, `MKT_GOOGLE_CUSTOMER_ID`, and `MKT_GOOGLE_ACCESS_TOKEN` **or** the `MKT_GOOGLE_CLIENT_ID`/`MKT_GOOGLE_CLIENT_SECRET`/`MKT_GOOGLE_REFRESH_TOKEN` trio | `login_customer_id` in the profile (MCC) |
+| TikTok | `MKT_TIKTOK_ACCESS_TOKEN`, `MKT_TIKTOK_ADVERTISER_ID` | |
+| LinkedIn | `MKT_LINKEDIN_ACCESS_TOKEN`, `MKT_LINKEDIN_AD_ACCOUNT_ID` | |
+
 ```bash
 export MKT_META_ACCESS_TOKEN="your-token-here"
 export MKT_META_AD_ACCOUNT_ID="act_123456789"
