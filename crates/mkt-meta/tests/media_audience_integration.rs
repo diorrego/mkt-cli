@@ -2,6 +2,7 @@
 //! Wiremock-based integration tests for Meta audience listing, image
 //! upload, and creative validation against the v25.0 Graph API contract.
 
+use base64::Engine as _;
 use mkt_core::models::{CreateCreativeInput, UploadImageInput};
 use mkt_core::provider::MarketingProvider;
 use mkt_meta::{MetaClient, MetaProvider};
@@ -133,7 +134,6 @@ async fn test_upload_image_downloads_url_and_sends_bytes() {
         body.get("url").is_none(),
         "the adimages edge has no url parameter: {body}"
     );
-    use base64::Engine as _;
     assert_eq!(
         body["bytes"].as_str().unwrap_or_default(),
         base64::engine::general_purpose::STANDARD.encode(image_bytes),
