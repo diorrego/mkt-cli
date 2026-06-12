@@ -80,8 +80,8 @@ mod tests {
 
     #[test]
     fn env_var_resolution_with_existing_var() {
-        // HOME is always set on Linux — use it to test env var path
-        let result = resolve_token("test", "HOME", None);
+        // PATH is set on every supported platform (HOME is not on Windows).
+        let result = resolve_token("test", "PATH", None);
         assert!(result.is_ok());
     }
 
