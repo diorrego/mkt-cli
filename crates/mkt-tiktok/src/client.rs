@@ -7,7 +7,7 @@
 //! paths require trailing slashes.
 
 use mkt_core::error::{MktError, Result};
-use mkt_core::http::RateLimiter;
+use mkt_core::http::{OpKind, RateLimiter, RetryPolicy, retry, retry_after_secs};
 use reqwest::Client;
 use secrecy::{ExposeSecret, SecretString};
 use tracing::instrument;
@@ -25,6 +25,7 @@ pub struct TikTokClient {
     access_token: SecretString,
     advertiser_id: String,
     rate_limiter: RateLimiter,
+    retry: RetryPolicy,
 }
 
 impl TikTokClient {
@@ -34,14 +35,17 @@ impl TikTokClient {
     ///
     /// Returns an error if the underlying HTTP client cannot be built.
     pub fn new(access_token: SecretString, advertiser_id: String) -> Result<Self> {
-        Self::new_with_base_url(
+        Ok(Self::new_with_base_url(
             access_token,
             advertiser_id,
             "https://business-api.tiktok.com/open_api/v1.3/".to_string(),
-        )
+        )?
+        .with_retry_policy(RetryPolicy::standard()))
     }
 
     /// Create a new client with a custom base URL (e.g. for wiremock tests).
+    /// Starts with no retries so tests stay deterministic; production
+    /// constructors opt in via [`Self::with_retry_policy`].
     ///
     /// # Errors
     ///
@@ -58,7 +62,16 @@ impl TikTokClient {
             access_token,
             advertiser_id,
             rate_limiter: RateLimiter::new(MAX_CONCURRENT),
+            retry: RetryPolicy::none(),
         })
+    }
+
+    /// Replace the retry policy (reads retry transient failures, writes
+    /// only rate limits and connection failures).
+    #[must_use]
+    pub const fn with_retry_policy(mut self, policy: RetryPolicy) -> Self {
+        self.retry = policy;
+        self
     }
 
     /// The advertiser ID (numeric string).
@@ -81,15 +94,17 @@ impl TikTokClient {
         self.rate_limiter.acquire(1).await?;
         let url = format!("{}{path}", self.base_url);
 
-        let response = self
-            .http
-            .get(&url)
-            .header("Access-Token", self.access_token.expose_secret())
-            .query(params)
-            .send()
-            .await?;
-
-        Self::parse_response(response).await
+        retry(&self.retry, OpKind::Read, || async {
+            let response = self
+                .http
+                .get(&url)
+                .header("Access-Token", self.access_token.expose_secret())
+                .query(params)
+                .send()
+                .await?;
+            Self::parse_response(response).await
+        })
+        .await
     }
 
     /// Perform a POST request with a JSON body. Returns the envelope's
@@ -105,28 +120,38 @@ impl TikTokClient {
         self.rate_limiter.acquire(3).await?;
         let url = format!("{}{path}", self.base_url);
 
-        let response = self
-            .http
-            .post(&url)
-            .header("Access-Token", self.access_token.expose_secret())
-            .json(body)
-            .send()
-            .await?;
-
-        Self::parse_response(response).await
+        retry(&self.retry, OpKind::Write, || async {
+            let response = self
+                .http
+                .post(&url)
+                .header("Access-Token", self.access_token.expose_secret())
+                .json(body)
+                .send()
+                .await?;
+            Self::parse_response(response).await
+        })
+        .await
     }
 
     /// Parse a response: check the HTTP status, then the envelope `code`.
     async fn parse_response(response: reqwest::Response) -> Result<serde_json::Value> {
         let status = response.status().as_u16();
+        let retry_after = retry_after_secs(response.headers());
         let body = response.text().await?;
+
+        if status == 429 {
+            return Err(MktError::RateLimited {
+                provider: "tiktok".into(),
+                retry_after_secs: retry_after.unwrap_or(60),
+            });
+        }
 
         if !(200..300).contains(&status) {
             return Err(MktError::ApiError {
                 provider: "tiktok".into(),
                 status,
                 message: body,
-                retry_after: None,
+                retry_after,
             });
         }
 

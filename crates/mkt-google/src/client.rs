@@ -6,7 +6,7 @@
 //! [`crate::provider`].
 
 use mkt_core::error::{MktError, Result};
-use mkt_core::http::RateLimiter;
+use mkt_core::http::{OpKind, RateLimiter, RetryPolicy, retry, retry_after_secs};
 use reqwest::Client;
 use secrecy::{ExposeSecret, SecretString};
 use tracing::instrument;
@@ -29,6 +29,7 @@ pub struct GoogleClient {
     customer_id: String,
     login_customer_id: Option<String>,
     rate_limiter: RateLimiter,
+    retry: RetryPolicy,
 }
 
 impl GoogleClient {
@@ -47,16 +48,19 @@ impl GoogleClient {
         login_customer_id: Option<&str>,
     ) -> Result<Self> {
         let base_url = format!("https://googleads.googleapis.com/{API_VERSION}/");
-        Self::new_with_base_url(
+        Ok(Self::new_with_base_url(
             access_token,
             developer_token,
             customer_id,
             login_customer_id,
             base_url,
-        )
+        )?
+        .with_retry_policy(RetryPolicy::standard()))
     }
 
     /// Create a new client with a custom base URL (e.g. for wiremock tests).
+    /// Starts with no retries so tests stay deterministic; production
+    /// constructors opt in via [`Self::with_retry_policy`].
     ///
     /// # Errors
     ///
@@ -77,7 +81,16 @@ impl GoogleClient {
             customer_id: customer_id.replace('-', ""),
             login_customer_id: login_customer_id.map(|id| id.replace('-', "")),
             rate_limiter: RateLimiter::new(MAX_CONCURRENT),
+            retry: RetryPolicy::none(),
         })
+    }
+
+    /// Replace the retry policy (reads retry transient failures, writes
+    /// only rate limits and connection failures).
+    #[must_use]
+    pub const fn with_retry_policy(mut self, policy: RetryPolicy) -> Self {
+        self.retry = policy;
+        self
     }
 
     /// The customer ID (dashes stripped).
@@ -95,7 +108,7 @@ impl GoogleClient {
     pub async fn search(&self, query: &str) -> Result<serde_json::Value> {
         let path = format!("customers/{}/googleAds:search", self.customer_id);
         let body = serde_json::json!({ "query": query });
-        self.post(&path, &body).await
+        self.post(&path, &body, OpKind::Read).await
     }
 
     /// Send mutate operations to a resource endpoint, e.g.
@@ -113,37 +126,53 @@ impl GoogleClient {
     ) -> Result<serde_json::Value> {
         let path = format!("customers/{}/{resource}:mutate", self.customer_id);
         let body = serde_json::json!({ "operations": operations });
-        self.post(&path, &body).await
+        self.post(&path, &body, OpKind::Write).await
     }
 
     /// Perform an authenticated POST request with a JSON body.
-    async fn post(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
+    async fn post(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+        kind: OpKind,
+    ) -> Result<serde_json::Value> {
         self.rate_limiter.acquire(1).await?;
         let url = format!("{}{path}", self.base_url);
 
-        let mut request = self
-            .http
-            .post(&url)
-            .bearer_auth(self.access_token.expose_secret())
-            .header("developer-token", &self.developer_token)
-            .json(body);
+        retry(&self.retry, kind, || async {
+            let mut request = self
+                .http
+                .post(&url)
+                .bearer_auth(self.access_token.expose_secret())
+                .header("developer-token", &self.developer_token)
+                .json(body);
 
-        if let Some(login_id) = &self.login_customer_id {
-            request = request.header("login-customer-id", login_id);
-        }
+            if let Some(login_id) = &self.login_customer_id {
+                request = request.header("login-customer-id", login_id);
+            }
 
-        let response = request.send().await?;
-        Self::parse_response(response).await
+            let response = request.send().await?;
+            Self::parse_response(response).await
+        })
+        .await
     }
 
     /// Parse a response, returning either the JSON body or a mapped error.
     async fn parse_response(response: reqwest::Response) -> Result<serde_json::Value> {
         let status = response.status().as_u16();
+        let retry_after = retry_after_secs(response.headers());
         let body = response.text().await?;
 
         if (200..300).contains(&status) {
             let value: serde_json::Value = serde_json::from_str(&body)?;
             return Ok(value);
+        }
+
+        if status == 429 {
+            return Err(MktError::RateLimited {
+                provider: "google".into(),
+                retry_after_secs: retry_after.unwrap_or(60),
+            });
         }
 
         if let Ok(api_err) = serde_json::from_str::<GoogleApiErrorResponse>(&body) {
@@ -154,7 +183,7 @@ impl GoogleClient {
             provider: "google".into(),
             status,
             message: body,
-            retry_after: None,
+            retry_after,
         })
     }
 }
