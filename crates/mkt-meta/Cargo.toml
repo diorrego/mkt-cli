@@ -14,7 +14,7 @@ description = "Meta (Facebook/Instagram) provider for the mkt marketing CLI"
 workspace = true
 
 [dependencies]
-mkt-cli-core = { path = "../mkt-core", version = "0.1.1" }
+mkt-cli-core = { path = "../mkt-core", version = "0.2.0" }
 base64.workspace = true
 chrono.workspace = true
 reqwest.workspace = true
