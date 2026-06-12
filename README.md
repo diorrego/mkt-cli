@@ -18,8 +18,10 @@ Marketing teams juggle multiple ad platforms daily, each with its own dashboard,
 - Unified analytics (cost always in currency units) as table, JSON, or CSV
 - Agent contract: stable exit codes (0-7), structured JSON errors with recovery hints
 - Spend safety: `--dry-run` on every mutating command; everything is created paused
+- Reliability: automatic retries with exponential backoff honoring `Retry-After` —
+  reads retry transient failures, writes never repeat a request that may have executed
 - MCP server (`mkt mcp serve`) for Claude Desktop / ChatGPT
-- Shell completions, profile-based multi-account config, built-in rate limiting
+- Shell completions, profile-based multi-account config
 
 ## Supported Platforms
 
@@ -40,7 +42,13 @@ cargo install mkt-cli
 
 ### From releases
 
-Download the latest binary from [GitHub Releases](https://github.com/diorrego/mkt-cli/releases) for your platform.
+Prebuilt static binaries for Linux (x86_64/aarch64 musl), macOS (Intel/Apple
+Silicon), and Windows are on [GitHub Releases](https://github.com/diorrego/mkt-cli/releases):
+
+```bash
+curl -L https://github.com/diorrego/mkt-cli/releases/latest/download/mkt-x86_64-unknown-linux-musl.tar.gz | tar xz
+sudo mv mkt /usr/local/bin/
+```
 
 ## Quick Start
 
@@ -83,6 +91,7 @@ mkt --output json google campaign list --status active
 mkt --dry-run meta campaign create --name "Test" --objective OUTCOME_TRAFFIC
 mkt meta campaign create --name "Q1 Launch" --objective OUTCOME_LEADS
 mkt google campaign create --name "Brand" --objective SEARCH --daily-budget 50
+# (declares containsEuPoliticalAdvertising=DOES_NOT_CONTAIN… by default; override via --extra)
 mkt tiktok campaign create --name "Spark" --objective TRAFFIC --daily-budget 50
 
 # Meta ad sets and post boosting (boost ad is created PAUSED)
