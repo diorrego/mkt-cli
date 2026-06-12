@@ -71,8 +71,11 @@ Environment variables take precedence over the config file:
 # Meta
 export MKT_META_ACCESS_TOKEN="..."          # system-user token
 export MKT_META_AD_ACCOUNT_ID="act_123456789"
+export MKT_META_PAGE_ID="..."               # required for posts + creatives
+export MKT_META_IG_USER_ID="..."            # required for Instagram publishing
 # Google Ads
-export MKT_GOOGLE_ACCESS_TOKEN="..."        # or refresh-token trio in config.toml
+export MKT_GOOGLE_ACCESS_TOKEN="..."        # or the MKT_GOOGLE_CLIENT_ID/
+                                            # CLIENT_SECRET/REFRESH_TOKEN trio
 export MKT_GOOGLE_DEVELOPER_TOKEN="..."
 export MKT_GOOGLE_CUSTOMER_ID="1234567890"
 # TikTok
