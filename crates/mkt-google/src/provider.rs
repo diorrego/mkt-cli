@@ -204,17 +204,20 @@ impl MarketingProvider for GoogleProvider {
                     .join(", ")
             };
 
-            let mut gaql = format!(
+            let gaql = format!(
                 "SELECT campaign.id, campaign.name, segments.date, {metrics} FROM campaign"
             );
 
-            if let Some(range) = &query.date_range {
-                gaql = format!(
+            // GAQL requires a finite date range whenever a core date
+            // segment is selected, so an unbounded query must not be sent.
+            let gaql = match &query.date_range {
+                Some(range) => format!(
                     "{gaql} WHERE segments.date BETWEEN '{}' AND '{}'",
                     range.start.format("%Y-%m-%d"),
                     range.end.format("%Y-%m-%d")
-                );
-            }
+                ),
+                None => format!("{gaql} WHERE segments.date DURING LAST_30_DAYS"),
+            };
 
             let resp = self.client.search(&gaql).await?;
             mapping::google_insights_to_domain(&resp)

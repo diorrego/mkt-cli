@@ -119,11 +119,33 @@ pub fn budget_create_operation(input: &CreateCampaignInput) -> Option<serde_json
     })
 }
 
+/// Campaign fields that are members of the bidding-strategy oneof. An
+/// explicit strategy in `extra` must replace the `manualCpc` default —
+/// the API rejects operations carrying two members.
+const BIDDING_STRATEGY_FIELDS: &[&str] = &[
+    "biddingStrategy",
+    "commission",
+    "manualCpa",
+    "manualCpc",
+    "manualCpm",
+    "manualCpv",
+    "maximizeConversionValue",
+    "maximizeConversions",
+    "percentCpc",
+    "targetCpa",
+    "targetCpm",
+    "targetImpressionShare",
+    "targetRoas",
+    "targetSpend",
+];
+
 /// Build the `campaigns:mutate` create operation.
 ///
 /// `objective` carries the advertising channel type (`SEARCH`, `DISPLAY`,
 /// `PERFORMANCE_MAX`, ...). New campaigns default to `PAUSED` so spend is
-/// an explicit decision.
+/// an explicit decision, and to no EU political advertising — a
+/// declaration the API requires on every campaign create; declare via
+/// `extra` when the campaign does contain it.
 pub fn campaign_create_operation(
     input: &CreateCampaignInput,
     budget_resource_name: &str,
@@ -139,10 +161,17 @@ pub fn campaign_create_operation(
         "advertisingChannelType": input.objective.to_uppercase(),
         "campaignBudget": budget_resource_name,
         "manualCpc": {},
+        "containsEuPoliticalAdvertising": "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
     });
 
     if let Some(extra) = &input.extra {
         if let (Some(base), Some(overlay)) = (create.as_object_mut(), extra.as_object()) {
+            let replaces_bidding = overlay
+                .keys()
+                .any(|k| k != "manualCpc" && BIDDING_STRATEGY_FIELDS.contains(&k.as_str()));
+            if replaces_bidding && !overlay.contains_key("manualCpc") {
+                base.remove("manualCpc");
+            }
             for (k, v) in overlay {
                 base.insert(k.clone(), v.clone());
             }
