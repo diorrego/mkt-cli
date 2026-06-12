@@ -1332,6 +1332,7 @@ dependencies = [
 name = "mkt-meta"
 version = "0.1.1"
 dependencies = [
+ "base64",
  "chrono",
  "insta",
  "mkt-cli-core",

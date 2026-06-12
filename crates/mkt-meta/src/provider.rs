@@ -335,7 +335,10 @@ impl MarketingProvider for MetaProvider {
     fn list_audiences(&self) -> impl std::future::Future<Output = Result<Vec<Audience>>> + Send {
         async move {
             let path = format!("{}/customaudiences", self.act_path());
-            let params = [("fields", "id,name,description,approximate_count,subtype")];
+            let params = [(
+                "fields",
+                "id,name,description,approximate_count_lower_bound,approximate_count_upper_bound,time_created,subtype",
+            )];
             let resp = self.client.get(&path, &params).await?;
             mapping::meta_audiences_to_domain(&resp)
         }
@@ -362,7 +365,7 @@ impl MarketingProvider for MetaProvider {
                 .client
                 .get(
                     id,
-                    &[("fields", "id,name,description,approximate_count,subtype")],
+                    &[("fields", "id,name,description,approximate_count_lower_bound,approximate_count_upper_bound,time_created,subtype")],
                 )
                 .await?;
             mapping::meta_audience_to_domain(&audience_resp)
@@ -525,7 +528,15 @@ impl MarketingProvider for MetaProvider {
             let path = format!("{}/adcreatives", self.act_path());
             let mut object_story_spec = serde_json::json!({});
 
-            let page_id = self.page_id.as_deref().unwrap_or("me");
+            // object_story_spec requires a real Page ID; "me" resolves to
+            // the user and the API rejects it.
+            let page_id = self
+                .page_id
+                .as_deref()
+                .ok_or_else(|| MktError::ValidationError {
+                    field: "page_id".into(),
+                    message: "page_id is required to create creatives (set meta.page_id in the profile or MKT_META_PAGE_ID)".into(),
+                })?;
             object_story_spec["page_id"] = serde_json::Value::String(page_id.to_string());
 
             let mut link_data = serde_json::json!({});
@@ -624,7 +635,15 @@ impl MarketingProvider for MetaProvider {
                     field: "url".into(),
                     message: "image URL is required for Meta image upload".into(),
                 })?;
-            let body = serde_json::json!({ "url": url });
+            // The adimages edge only accepts bytes (Base64) or copy_from,
+            // so a URL import downloads the asset first.
+            let image_bytes = self.client.fetch_bytes(url).await?;
+            use base64::Engine as _;
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
+            let mut body = serde_json::json!({ "bytes": encoded });
+            if let Some(name) = &input.name {
+                body["name"] = serde_json::Value::String(name.clone());
+            }
             let resp = self.client.post(&path, &body).await?;
 
             // Meta returns images keyed by hash.
