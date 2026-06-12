@@ -1,5 +1,6 @@
 //! [`MarketingProvider`] implementation for Meta (Facebook / Instagram).
 
+use base64::Engine as _;
 use mkt_core::error::{MktError, Result};
 use mkt_core::models::{
     Ad, AdSet, Audience, AudienceId, AudienceUpdateResult, AudienceUser, Campaign, CampaignFilters,
@@ -638,7 +639,6 @@ impl MarketingProvider for MetaProvider {
             // The adimages edge only accepts bytes (Base64) or copy_from,
             // so a URL import downloads the asset first.
             let image_bytes = self.client.fetch_bytes(url).await?;
-            use base64::Engine as _;
             let encoded = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
             let mut body = serde_json::json!({ "bytes": encoded });
             if let Some(name) = &input.name {
