@@ -1,10 +1,19 @@
 [package]
-name = "mkt-core"
+# Published as `mkt-cli-core` ("mkt-core" is taken on crates.io); the lib
+# target keeps the `mkt_core` name so imports stay `use mkt_core::…`.
+name = "mkt-cli-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Core traits, models, config, and output for the mkt marketing CLI"
+
+[lib]
+name = "mkt_core"
 
 [lints]
 workspace = true
