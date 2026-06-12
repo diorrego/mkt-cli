@@ -7,7 +7,7 @@
 //! JSON parsing, error mapping, and rate limiting.
 
 use mkt_core::error::{MktError, Result};
-use mkt_core::http::RateLimiter;
+use mkt_core::http::{OpKind, RateLimiter, RetryPolicy, retry, retry_after_secs};
 use reqwest::Client;
 use secrecy::{ExposeSecret, SecretString};
 use tracing::instrument;
@@ -39,6 +39,7 @@ pub struct LinkedInClient {
     access_token: SecretString,
     ad_account_id: String,
     rate_limiter: RateLimiter,
+    retry: RetryPolicy,
 }
 
 impl LinkedInClient {
@@ -48,14 +49,17 @@ impl LinkedInClient {
     ///
     /// Returns an error if the underlying HTTP client cannot be built.
     pub fn new(access_token: SecretString, ad_account_id: String) -> Result<Self> {
-        Self::new_with_base_url(
+        Ok(Self::new_with_base_url(
             access_token,
             ad_account_id,
             "https://api.linkedin.com/rest/".to_string(),
-        )
+        )?
+        .with_retry_policy(RetryPolicy::standard()))
     }
 
     /// Create a new client with a custom base URL (e.g. for wiremock tests).
+    /// Starts with no retries so tests stay deterministic; production
+    /// constructors opt in via [`Self::with_retry_policy`].
     ///
     /// # Errors
     ///
@@ -72,7 +76,16 @@ impl LinkedInClient {
             access_token,
             ad_account_id,
             rate_limiter: RateLimiter::new(MAX_CONCURRENT),
+            retry: RetryPolicy::none(),
         })
+    }
+
+    /// Replace the retry policy (reads retry transient failures, writes
+    /// only rate limits and connection failures).
+    #[must_use]
+    pub const fn with_retry_policy(mut self, policy: RetryPolicy) -> Self {
+        self.retry = policy;
+        self
     }
 
     /// The ad account ID (numeric, no URN prefix).
@@ -99,16 +112,18 @@ impl LinkedInClient {
             format!("{}{path}?{raw_query}", self.base_url)
         };
 
-        let response = self
-            .http
-            .get(&url)
-            .bearer_auth(self.access_token.expose_secret())
-            .header("Linkedin-Version", LINKEDIN_VERSION)
-            .header("X-Restli-Protocol-Version", "2.0.0")
-            .send()
-            .await?;
-
-        Ok(Self::parse_response(response).await?.body)
+        retry(&self.retry, OpKind::Read, || async {
+            let response = self
+                .http
+                .get(&url)
+                .bearer_auth(self.access_token.expose_secret())
+                .header("Linkedin-Version", LINKEDIN_VERSION)
+                .header("X-Restli-Protocol-Version", "2.0.0")
+                .send()
+                .await?;
+            Ok(Self::parse_response(response).await?.body)
+        })
+        .await
     }
 
     /// Perform a POST request with a JSON body.
@@ -130,20 +145,23 @@ impl LinkedInClient {
         self.rate_limiter.acquire(3).await?;
         let url = format!("{}{path}", self.base_url);
 
-        let mut request = self
-            .http
-            .post(&url)
-            .bearer_auth(self.access_token.expose_secret())
-            .header("Linkedin-Version", LINKEDIN_VERSION)
-            .header("X-Restli-Protocol-Version", "2.0.0")
-            .json(body);
+        retry(&self.retry, OpKind::Write, || async {
+            let mut request = self
+                .http
+                .post(&url)
+                .bearer_auth(self.access_token.expose_secret())
+                .header("Linkedin-Version", LINKEDIN_VERSION)
+                .header("X-Restli-Protocol-Version", "2.0.0")
+                .json(body);
 
-        if let Some(method) = restli_method {
-            request = request.header("X-RestLi-Method", method);
-        }
+            if let Some(method) = restli_method {
+                request = request.header("X-RestLi-Method", method);
+            }
 
-        let response = request.send().await?;
-        Self::parse_response(response).await
+            let response = request.send().await?;
+            Self::parse_response(response).await
+        })
+        .await
     }
 
     /// Perform a DELETE request (hard delete; LinkedIn only allows it for
@@ -158,28 +176,38 @@ impl LinkedInClient {
         self.rate_limiter.acquire(3).await?;
         let url = format!("{}{path}", self.base_url);
 
-        let response = self
-            .http
-            .delete(&url)
-            .bearer_auth(self.access_token.expose_secret())
-            .header("Linkedin-Version", LINKEDIN_VERSION)
-            .header("X-Restli-Protocol-Version", "2.0.0")
-            .send()
-            .await?;
-
-        Self::parse_response(response).await?;
-        Ok(())
+        retry(&self.retry, OpKind::Write, || async {
+            let response = self
+                .http
+                .delete(&url)
+                .bearer_auth(self.access_token.expose_secret())
+                .header("Linkedin-Version", LINKEDIN_VERSION)
+                .header("X-Restli-Protocol-Version", "2.0.0")
+                .send()
+                .await?;
+            Self::parse_response(response).await?;
+            Ok(())
+        })
+        .await
     }
 
     /// Parse a response into a [`WriteResponse`] or a mapped error.
     async fn parse_response(response: reqwest::Response) -> Result<WriteResponse> {
         let status = response.status().as_u16();
+        let retry_after = retry_after_secs(response.headers());
         let restli_id = response
             .headers()
             .get("x-restli-id")
             .and_then(|v| v.to_str().ok())
             .map(String::from);
         let body_text = response.text().await?;
+
+        if status == 429 {
+            return Err(MktError::RateLimited {
+                provider: "linkedin".into(),
+                retry_after_secs: retry_after.unwrap_or(60),
+            });
+        }
 
         if (200..300).contains(&status) {
             let body = if body_text.trim().is_empty() {
@@ -198,7 +226,7 @@ impl LinkedInClient {
             provider: "linkedin".into(),
             status,
             message: body_text,
-            retry_after: None,
+            retry_after,
         })
     }
 }

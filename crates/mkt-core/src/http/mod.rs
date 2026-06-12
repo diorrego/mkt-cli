@@ -5,6 +5,8 @@
 
 mod client;
 mod rate_limit;
+mod retry;
 
 pub use client::*;
 pub use rate_limit::*;
+pub use retry::*;
