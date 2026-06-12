@@ -157,7 +157,7 @@ pub fn assert_api_error_status<T: std::fmt::Debug>(
             );
         }
         Err(other) => {
-            panic!("expected ApiError with status {expected_status} but got {other:?}",);
+            panic!("expected ApiError with status {expected_status} but got {other:?}");
         }
     }
 }

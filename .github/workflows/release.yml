@@ -30,13 +30,15 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - name: Install cross (Linux ARM)
-        if: matrix.target == 'aarch64-unknown-linux-musl'
+      - name: Install cross (Linux musl)
+        if: contains(matrix.target, 'linux-musl')
         run: cargo install cross
       - name: Build
         shell: bash
         run: |
-          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-musl" ]]; then
+          # musl targets build via cross: its images ship the musl C
+          # toolchain that ring's build script needs.
+          if [[ "${{ matrix.target }}" == *linux-musl* ]]; then
             cross build --release --target ${{ matrix.target }} -p mkt-cli
           else
             cargo build --release --target ${{ matrix.target }} -p mkt-cli
