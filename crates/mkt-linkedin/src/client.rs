@@ -146,6 +146,31 @@ impl LinkedInClient {
         Self::parse_response(response).await
     }
 
+    /// Perform a DELETE request (hard delete; LinkedIn only allows it for
+    /// `DRAFT` campaigns).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MktError::ApiError`] for non-2xx responses and
+    /// [`MktError::Http`] for transport failures.
+    #[instrument(skip(self), fields(provider = "linkedin"))]
+    pub async fn delete(&self, path: &str) -> Result<()> {
+        self.rate_limiter.acquire(3).await?;
+        let url = format!("{}{path}", self.base_url);
+
+        let response = self
+            .http
+            .delete(&url)
+            .bearer_auth(self.access_token.expose_secret())
+            .header("Linkedin-Version", LINKEDIN_VERSION)
+            .header("X-Restli-Protocol-Version", "2.0.0")
+            .send()
+            .await?;
+
+        Self::parse_response(response).await?;
+        Ok(())
+    }
+
     /// Parse a response into a [`WriteResponse`] or a mapped error.
     async fn parse_response(response: reqwest::Response) -> Result<WriteResponse> {
         let status = response.status().as_u16();
