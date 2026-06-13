@@ -5,6 +5,8 @@
 
 mod paths;
 mod profile;
+mod secure_write;
 
 pub use paths::*;
 pub use profile::*;
+pub use secure_write::*;
