@@ -13,6 +13,10 @@ use mkt_core::provider::{MarketingProvider, ProviderCapabilities};
 use tracing::instrument;
 
 use crate::client::MetaClient;
+
+/// Upper bound on insights pages fetched per query (defense against
+/// runaway cursors; each page holds thousands of rows).
+const MAX_PAGES: usize = 100;
 use crate::mapping;
 
 /// Meta (Facebook / Instagram) marketing provider.
@@ -437,11 +441,42 @@ impl MarketingProvider for MetaProvider {
                 params.push(("level", level.to_string()));
             }
 
-            let param_refs: Vec<(&str, &str)> =
-                params.iter().map(|(k, v)| (*k, v.as_ref())).collect();
+            // Follow paging.next via the after cursor and aggregate —
+            // a truncated report silently loses spend data.
+            let mut report: Option<InsightsReport> = None;
+            let mut after: Option<String> = None;
+            for _ in 0..MAX_PAGES {
+                let mut page_params = params.clone();
+                if let Some(cursor) = &after {
+                    page_params.push(("after", cursor.clone()));
+                }
+                let param_refs: Vec<(&str, &str)> =
+                    page_params.iter().map(|(k, v)| (*k, v.as_ref())).collect();
 
-            let resp = self.client.get(&path, &param_refs).await?;
-            mapping::meta_insights_to_domain(&resp)
+                let resp = self.client.get(&path, &param_refs).await?;
+                let page = mapping::meta_insights_to_domain(&resp)?;
+                report = Some(match report.take() {
+                    None => page,
+                    Some(mut acc) => {
+                        acc.rows.extend(page.rows);
+                        acc
+                    }
+                });
+
+                let has_next = resp["paging"]["next"].as_str().is_some();
+                after = resp["paging"]["cursors"]["after"]
+                    .as_str()
+                    .map(String::from);
+                if !has_next || after.is_none() {
+                    break;
+                }
+            }
+            report.ok_or_else(|| MktError::ApiError {
+                provider: "meta".into(),
+                status: 0,
+                message: "insights returned no pages".into(),
+                retry_after: None,
+            })
         }
     }
 

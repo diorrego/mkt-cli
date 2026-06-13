@@ -141,6 +141,55 @@ async fn test_upload_image_downloads_url_and_sends_bytes() {
     );
 }
 
+// ── insights paging ───────────────────────────────────────────────────────────
+
+/// Insights responses with `paging.next` must be followed via the `after`
+/// cursor and aggregated.
+#[tokio::test]
+async fn test_get_insights_follows_paging_cursor() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path(format!("/act_{AD_ACCOUNT_ID}/insights")))
+        .and(wiremock::matchers::query_param("after", "CURSOR2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "campaign_id": "c1", "impressions": "10", "clicks": "1",
+                "spend": "1.00", "date_start": "2026-03-03", "date_stop": "2026-03-03"
+            }],
+            "paging": { "cursors": { "after": "CURSOR3" } }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path(format!("/act_{AD_ACCOUNT_ID}/insights")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "campaign_id": "c1", "impressions": "20", "clicks": "2",
+                "spend": "2.00", "date_start": "2026-03-01", "date_stop": "2026-03-01"
+            }, {
+                "campaign_id": "c1", "impressions": "30", "clicks": "3",
+                "spend": "3.00", "date_start": "2026-03-02", "date_stop": "2026-03-02"
+            }],
+            "paging": {
+                "cursors": { "after": "CURSOR2" },
+                "next": "https://graph.facebook.com/next-page"
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let report = provider
+        .get_insights(&mkt_core::models::InsightsQuery::default())
+        .await
+        .expect("paged insights should succeed");
+    assert_eq!(report.rows.len(), 3, "rows from both pages must aggregate");
+}
+
 // ── create_creative ───────────────────────────────────────────────────────────
 
 /// `object_story_spec.page_id` must be a real Page ID; the provider must
