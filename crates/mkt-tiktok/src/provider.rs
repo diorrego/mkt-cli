@@ -49,16 +49,16 @@ impl TikTokProvider {
                 let advertiser_ids = serde_json::json!([self.client.advertiser_id()]).to_string();
                 let params = [("advertiser_ids", advertiser_ids.as_str())];
                 match self.client.get("advertiser/info/", &params).await {
-                    Ok(data) => match data["list"][0]["currency"].as_str() {
-                        Some(currency) => currency.to_string(),
-                        None => {
+                    Ok(data) => data["list"][0]["currency"].as_str().map_or_else(
+                        || {
                             tracing::warn!(
                                 provider = "tiktok",
                                 "advertiser/info/ response missing 'currency'; assuming USD"
                             );
                             "USD".to_string()
-                        }
-                    },
+                        },
+                        ToString::to_string,
+                    ),
                     Err(error) => {
                         tracing::warn!(
                             provider = "tiktok",
