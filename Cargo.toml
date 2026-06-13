@@ -78,6 +78,7 @@ url = { version = "2", features = ["serde"] }
 secrecy = { version = "0.10", features = ["serde"] }
 dirs = "6"
 anstream = "1"
+governor = "0.10"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
 sha2 = "0.10"

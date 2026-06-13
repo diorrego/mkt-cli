@@ -14,8 +14,10 @@ use crate::error::GraphApiErrorResponse;
 /// Default Graph API version.
 const DEFAULT_API_VERSION: &str = "v25.0";
 
-/// Maximum concurrent requests (semaphore permits).
-const MAX_CONCURRENT: usize = 200;
+/// Client-side request budget in cells per second (reads cost 1,
+/// writes 3). Meta dev-tier budgets are per ad account per hour; 10 rps keeps
+/// bursts polite while the BUC headers govern the real ceiling.
+const REQUESTS_PER_SECOND: u32 = 10;
 
 /// Low-level client for the Meta Graph API.
 ///
@@ -70,7 +72,7 @@ impl MetaClient {
             base_url,
             access_token,
             ad_account_id,
-            rate_limiter: RateLimiter::new(MAX_CONCURRENT),
+            rate_limiter: RateLimiter::new(REQUESTS_PER_SECOND),
             retry: RetryPolicy::none(),
         })
     }

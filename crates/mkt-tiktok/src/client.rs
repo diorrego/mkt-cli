@@ -14,8 +14,9 @@ use tracing::instrument;
 
 use crate::error::envelope_code_to_error;
 
-/// Maximum concurrent requests (semaphore permits).
-const MAX_CONCURRENT: usize = 50;
+/// Client-side request budget in cells per second (reads cost 1,
+/// writes 3). TikTok standard tier is ~10 QPS per app; 8 rps leaves headroom.
+const REQUESTS_PER_SECOND: u32 = 8;
 
 /// Low-level client for the TikTok Business API.
 #[derive(Debug)]
@@ -61,7 +62,7 @@ impl TikTokClient {
             base_url,
             access_token,
             advertiser_id,
-            rate_limiter: RateLimiter::new(MAX_CONCURRENT),
+            rate_limiter: RateLimiter::new(REQUESTS_PER_SECOND),
             retry: RetryPolicy::none(),
         })
     }
