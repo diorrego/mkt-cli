@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-12
+
+World-class hardening release: real client-side rate limiting, complete
+pagination, atomic Google creation, optional Meta request signing,
+LinkedIn token refresh, account-currency budgets, an MCP dry-run
+contract, and a polished terminal contract for agents and humans.
+
+### Added
+
+- Real token-bucket rate limiting (governor/GCRA) with conservative
+  per-provider budgets (meta 10 rps, google 5, tiktok 8, linkedin 2);
+  the previous limiter released permits immediately and limited nothing
+- Pagination everywhere it was silently truncating: Google insights
+  follow `nextPageToken` (and `list --cursor` works), TikTok reports and
+  audiences aggregate all pages, Meta insights follow `paging.next`
+- Google Ads: budget + campaign creation is now ONE atomic
+  `googleAds:mutate` request with temporary resource names — a failed
+  create can no longer leave an orphaned budget
+- Meta: optional `appsecret_proof` on every Graph call (set
+  `MKT_META_APP_SECRET` or profile `app_secret`) for apps with
+  "Require App Secret" enabled
+- LinkedIn: programmatic OAuth token refresh via the
+  client_id/client_secret/refresh_token trio (env or profile; requires
+  Marketing Developer Platform approval)
+- TikTok: budget currency now comes from `advertiser/info/` (cached per
+  session) instead of a hardcoded USD; `list --limit` is clamped to the
+  API maximum of 1000
+- MCP: `campaign_create` and `campaign_set_status` accept
+  `dry_run: true` and preview the action without credentials — the same
+  spend-safety contract as the CLI's `--dry-run`
+- CLI: `MKT_PROFILE`/`MKT_OUTPUT` env parity (documented in `--help`),
+  `-o/-v/-q` short flags, `--verbose` now conflicts with `--quiet`,
+  and `mkt providers --output json` emits a structured payload
+- Terminal contract: ANSI only on color-capable terminals (`NO_COLOR`,
+  `CLICOLOR_FORCE`, `TERM=dumb` honored); `mkt ... | head` exits 0 on a
+  closed pipe instead of erroring
+- Config files are written owner-only (0600) from the first byte and
+  `mkt doctor` warns when the config is readable by other users
+- Google: user-supplied names in GAQL `LIKE` filters have `%`/`_`/`[`
+  neutralized so they match literally
+
+### Changed
+
+- Meta `page_id`/`ig_user_id` and the Google OAuth trio now resolve from
+  environment variables (`MKT_META_PAGE_ID`, `MKT_META_IG_USER_ID`,
+  `MKT_GOOGLE_CLIENT_ID`/`_CLIENT_SECRET`/`_REFRESH_TOKEN`) like every
+  other credential
+
 ## [0.2.0] - 2026-06-12
 
 Reliability release: every provider call now retries transient failures

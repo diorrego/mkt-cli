@@ -1334,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "mkt-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anstream",
  "anyhow",
@@ -1361,7 +1361,7 @@ dependencies = [
 
 [[package]]
 name = "mkt-cli-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "comfy-table",
@@ -1388,7 +1388,7 @@ dependencies = [
 
 [[package]]
 name = "mkt-google"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "mkt-cli-core",
@@ -1404,7 +1404,7 @@ dependencies = [
 
 [[package]]
 name = "mkt-linkedin"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "mkt-cli-core",
@@ -1420,7 +1420,7 @@ dependencies = [
 
 [[package]]
 name = "mkt-meta"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64",
  "chrono",
@@ -1444,7 +1444,7 @@ dependencies = [
 
 [[package]]
 name = "mkt-testkit"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "mkt-cli-core",
@@ -1456,7 +1456,7 @@ dependencies = [
 
 [[package]]
 name = "mkt-tiktok"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "mkt-cli-core",
