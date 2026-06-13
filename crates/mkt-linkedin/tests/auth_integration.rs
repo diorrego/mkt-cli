@@ -29,9 +29,9 @@ async fn test_refresh_exchange_success() {
         .and(body_string_contains("client_secret=test-client-secret"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "access_token": "AQXNnd2kXITHmSxB",
-            "expires_in": 86400,
+            "expires_in": 86_400,
             "refresh_token": "AQWAft_WjYZKwuWXLC5hQlghgTam",
-            "refresh_token_expires_in": 439200,
+            "refresh_token_expires_in": 439_200,
             "scope": "r_ads,rw_ads"
         })))
         .expect(1)
@@ -99,7 +99,7 @@ async fn test_refresh_response_missing_access_token() {
     Mock::given(method("POST"))
         .and(path("/oauth/v2/accessToken"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "expires_in": 86400
+            "expires_in": 86_400
         })))
         .expect(1)
         .mount(&server)
