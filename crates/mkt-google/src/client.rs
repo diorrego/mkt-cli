@@ -149,6 +149,32 @@ impl GoogleClient {
         self.post(&path, &body, OpKind::Write).await
     }
 
+    /// Send cross-resource operations to the atomic `googleAds:mutate`
+    /// endpoint as one transactional request.
+    ///
+    /// `operations` is the `mutateOperations` array, where each entry
+    /// wraps a per-resource operation (e.g. `campaignBudgetOperation`,
+    /// `campaignOperation`). Operations may reference resources created
+    /// earlier in the same array via temporary negative IDs.
+    /// `partialFailure` is disabled so either every operation succeeds or
+    /// none is applied, and `responseContentType` requests the mutated
+    /// resource names back.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MktError::ApiError`] for non-2xx responses and
+    /// [`MktError::Http`] for transport failures.
+    #[instrument(skip(self, operations), fields(provider = "google"))]
+    pub async fn mutate_atomic(&self, operations: &serde_json::Value) -> Result<serde_json::Value> {
+        let path = format!("customers/{}/googleAds:mutate", self.customer_id);
+        let body = serde_json::json!({
+            "mutateOperations": operations,
+            "partialFailure": false,
+            "responseContentType": "MUTABLE_RESOURCE",
+        });
+        self.post(&path, &body, OpKind::Write).await
+    }
+
     /// Perform an authenticated POST request with a JSON body.
     async fn post(
         &self,
