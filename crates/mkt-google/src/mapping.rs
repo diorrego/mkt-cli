@@ -121,25 +121,6 @@ pub fn escape_gaql_like(value: &str) -> String {
     escaped
 }
 
-/// Build the `campaignBudgets:mutate` create operation for a new campaign.
-///
-/// The budget name embeds the campaign name for traceability; Google
-/// requires budget names to be unique per account.
-pub fn budget_create_operation(input: &CreateCampaignInput) -> Option<serde_json::Value> {
-    input.budget.as_ref().map(|b| {
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        // budgets are positive and far below u64::MAX micros
-        let micros = (b.amount * MICROS_PER_UNIT).round() as u64;
-        serde_json::json!([{
-            "create": {
-                "name": format!("{} — budget", input.name),
-                "amountMicros": micros.to_string(),
-                "deliveryMethod": "STANDARD",
-            }
-        }])
-    })
-}
-
 /// Campaign fields that are members of the bidding-strategy oneof. An
 /// explicit strategy in `extra` must replace the `manualCpc` default —
 /// the API rejects operations carrying two members.
@@ -160,22 +141,13 @@ const BIDDING_STRATEGY_FIELDS: &[&str] = &[
     "targetSpend",
 ];
 
-/// Build the `campaigns:mutate` create operation.
+/// Build the campaign `create` JSON object for a mutate operation.
 ///
 /// `objective` carries the advertising channel type (`SEARCH`, `DISPLAY`,
 /// `PERFORMANCE_MAX`, ...). New campaigns default to `PAUSED` so spend is
 /// an explicit decision, and to no EU political advertising — a
 /// declaration the API requires on every campaign create; declare via
 /// `extra` when the campaign does contain it.
-pub fn campaign_create_operation(
-    input: &CreateCampaignInput,
-    budget_resource_name: &str,
-) -> serde_json::Value {
-    serde_json::json!([{ "create": campaign_create_object(input, budget_resource_name) }])
-}
-
-/// Build the campaign `create` JSON object shared by the per-resource and
-/// atomic mutate payloads.
 fn campaign_create_object(
     input: &CreateCampaignInput,
     budget_resource_name: &str,
@@ -290,25 +262,6 @@ pub fn campaign_update_operation(
         "updateMask": mask.join(","),
         "update": update,
     }])
-}
-
-/// Extract the numeric campaign ID from a mutate result resource name.
-///
-/// # Errors
-///
-/// Returns [`MktError::ApiError`] if the response has no
-/// `results[0].resourceName` or it does not contain a campaign ID.
-pub fn campaign_id_from_mutate(resp: &serde_json::Value) -> Result<String> {
-    resp["results"][0]["resourceName"]
-        .as_str()
-        .and_then(|name| name.rsplit('/').next())
-        .map(String::from)
-        .ok_or_else(|| MktError::ApiError {
-            provider: "google".into(),
-            status: 0,
-            message: "mutate response missing results[0].resourceName".into(),
-            retry_after: None,
-        })
 }
 
 /// Extract the numeric campaign ID from an atomic `googleAds:mutate`
@@ -496,54 +449,6 @@ mod tests {
     }
 
     #[test]
-    fn test_budget_create_operation_converts_to_micros() {
-        let input = CreateCampaignInput {
-            name: "X".into(),
-            objective: "SEARCH".into(),
-            status: None,
-            budget: Some(Budget {
-                amount: 12.34,
-                currency: "USD".into(),
-                kind: BudgetKind::Daily,
-            }),
-            extra: None,
-        };
-        let ops = budget_create_operation(&input).expect("budget present");
-        assert_eq!(ops[0]["create"]["amountMicros"], "12340000");
-        assert_eq!(ops[0]["create"]["name"], "X — budget");
-    }
-
-    #[test]
-    fn test_budget_create_operation_none_without_budget() {
-        let input = CreateCampaignInput {
-            name: "X".into(),
-            objective: "SEARCH".into(),
-            status: None,
-            budget: None,
-            extra: None,
-        };
-        assert!(budget_create_operation(&input).is_none());
-    }
-
-    #[test]
-    fn test_campaign_create_operation_defaults_to_paused() {
-        let input = CreateCampaignInput {
-            name: "X".into(),
-            objective: "search".into(),
-            status: None,
-            budget: None,
-            extra: None,
-        };
-        let ops = campaign_create_operation(&input, "customers/1/campaignBudgets/2");
-        assert_eq!(ops[0]["create"]["status"], "PAUSED");
-        assert_eq!(ops[0]["create"]["advertisingChannelType"], "SEARCH");
-        assert_eq!(
-            ops[0]["create"]["campaignBudget"],
-            "customers/1/campaignBudgets/2"
-        );
-    }
-
-    #[test]
     fn test_atomic_create_operations_budget_precedes_campaign() {
         let input = CreateCampaignInput {
             name: "X".into(),
@@ -665,23 +570,6 @@ mod tests {
             ops[0]["update"]["resourceName"],
             "customers/123/campaigns/456"
         );
-    }
-
-    #[test]
-    fn test_campaign_id_from_mutate() {
-        let resp = serde_json::json!({
-            "results": [{ "resourceName": "customers/123/campaigns/789" }]
-        });
-        assert_eq!(
-            campaign_id_from_mutate(&resp).expect("should extract"),
-            "789"
-        );
-    }
-
-    #[test]
-    fn test_campaign_id_from_mutate_missing_is_error() {
-        let resp = serde_json::json!({ "results": [] });
-        assert!(campaign_id_from_mutate(&resp).is_err());
     }
 
     #[test]
