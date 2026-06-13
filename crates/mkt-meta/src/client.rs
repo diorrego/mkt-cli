@@ -3,13 +3,18 @@
 //! [`MetaClient`] handles authentication, JSON parsing, error mapping,
 //! and rate limiting.  Higher-level logic lives in [`crate::provider`].
 
+use hmac::{Hmac, Mac};
 use mkt_core::error::{MktError, Result};
 use mkt_core::http::{OpKind, RateLimiter, RetryPolicy, retry, retry_after_secs};
 use reqwest::Client;
 use secrecy::{ExposeSecret, SecretString};
+use sha2::Sha256;
 use tracing::instrument;
 
 use crate::error::GraphApiErrorResponse;
+
+/// HMAC-SHA256, the keyed hash behind `appsecret_proof`.
+type HmacSha256 = Hmac<Sha256>;
 
 /// Default Graph API version.
 const DEFAULT_API_VERSION: &str = "v25.0";
@@ -28,6 +33,10 @@ pub struct MetaClient {
     http: Client,
     base_url: String,
     access_token: SecretString,
+    /// App secret used to derive `appsecret_proof`. When set, every Graph
+    /// API call carries the proof (required by apps with the "Require App
+    /// Secret" setting enabled).
+    app_secret: Option<SecretString>,
     ad_account_id: String,
     rate_limiter: RateLimiter,
     retry: RetryPolicy,
@@ -71,10 +80,21 @@ impl MetaClient {
             http,
             base_url,
             access_token,
+            app_secret: None,
             ad_account_id,
             rate_limiter: RateLimiter::new(REQUESTS_PER_SECOND),
             retry: RetryPolicy::none(),
         })
+    }
+
+    /// Configure an app secret so every Graph API call carries an
+    /// `appsecret_proof` parameter (HMAC-SHA256 of the access token keyed
+    /// by the app secret). Required for apps with the "Require App
+    /// Secret" setting enabled.
+    #[must_use]
+    pub fn with_app_secret(mut self, app_secret: SecretString) -> Self {
+        self.app_secret = Some(app_secret);
+        self
     }
 
     /// Replace the retry policy (reads retry transient failures, writes
@@ -90,6 +110,18 @@ impl MetaClient {
         &self.ad_account_id
     }
 
+    /// Compute the `appsecret_proof` for the configured credentials:
+    /// lowercase-hex HMAC-SHA256 of the access token, keyed by the app
+    /// secret. Returns `None` when no app secret is configured.
+    fn appsecret_proof(&self) -> Option<String> {
+        let app_secret = self.app_secret.as_ref()?;
+        // HMAC accepts keys of any length, so `new_from_slice` cannot
+        // fail here; `.ok()?` only satisfies the signature.
+        let mut mac = HmacSha256::new_from_slice(app_secret.expose_secret().as_bytes()).ok()?;
+        mac.update(self.access_token.expose_secret().as_bytes());
+        Some(hex::encode(mac.finalize().into_bytes()))
+    }
+
     /// Perform an authenticated GET request.
     ///
     /// # Errors
@@ -100,15 +132,18 @@ impl MetaClient {
     pub async fn get(&self, path: &str, params: &[(&str, &str)]) -> Result<serde_json::Value> {
         self.rate_limiter.acquire(1).await?;
         let url = format!("{}{path}", self.base_url);
+        let proof = self.appsecret_proof();
 
         retry(&self.retry, OpKind::Read, || async {
-            let response = self
+            let mut request = self
                 .http
                 .get(&url)
                 .bearer_auth(self.access_token.expose_secret())
-                .query(params)
-                .send()
-                .await?;
+                .query(params);
+            if let Some(proof) = proof.as_deref() {
+                request = request.query(&[("appsecret_proof", proof)]);
+            }
+            let response = request.send().await?;
             Self::parse_response(response).await
         })
         .await
@@ -124,6 +159,20 @@ impl MetaClient {
     pub async fn post(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
         self.rate_limiter.acquire(3).await?;
         let url = format!("{}{path}", self.base_url);
+
+        // Clone and extend the body only when a proof is configured;
+        // otherwise borrow the caller's body untouched.
+        let enriched = self.appsecret_proof().map(|proof| {
+            let mut body = body.clone();
+            if let Some(map) = body.as_object_mut() {
+                map.insert(
+                    "appsecret_proof".to_owned(),
+                    serde_json::Value::String(proof),
+                );
+            }
+            body
+        });
+        let body = enriched.as_ref().unwrap_or(body);
 
         retry(&self.retry, OpKind::Write, || async {
             let response = self
@@ -148,14 +197,17 @@ impl MetaClient {
     pub async fn delete(&self, path: &str) -> Result<serde_json::Value> {
         self.rate_limiter.acquire(3).await?;
         let url = format!("{}{path}", self.base_url);
+        let proof = self.appsecret_proof();
 
         retry(&self.retry, OpKind::Write, || async {
-            let response = self
+            let mut request = self
                 .http
                 .delete(&url)
-                .bearer_auth(self.access_token.expose_secret())
-                .send()
-                .await?;
+                .bearer_auth(self.access_token.expose_secret());
+            if let Some(proof) = proof.as_deref() {
+                request = request.query(&[("appsecret_proof", proof)]);
+            }
+            let response = request.send().await?;
             Self::parse_response(response).await
         })
         .await
