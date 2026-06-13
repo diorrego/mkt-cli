@@ -6,10 +6,14 @@ use mkt_core::models::{
     InsightsReport, Paginated, ProviderHealth, UpdateCampaignInput,
 };
 use mkt_core::provider::{MarketingProvider, ProviderCapabilities};
+use tokio::sync::OnceCell;
 use tracing::instrument;
 
 use crate::client::TikTokClient;
 use crate::mapping;
+
+/// Maximum `page_size` accepted by `GET /campaign/get/`.
+const MAX_PAGE_SIZE: u32 = 1000;
 
 /// TikTok for Business marketing provider.
 ///
@@ -19,12 +23,54 @@ use crate::mapping;
 #[derive(Debug)]
 pub struct TikTokProvider {
     client: TikTokClient,
+    /// Account currency from `GET /advertiser/info/`, fetched lazily and
+    /// cached for the lifetime of the provider.
+    account_currency: OnceCell<String>,
 }
 
 impl TikTokProvider {
     /// Create a new TikTok provider.
     pub const fn new(client: TikTokClient) -> Self {
-        Self { client }
+        Self {
+            client,
+            account_currency: OnceCell::const_new(),
+        }
+    }
+
+    /// The advertiser account currency, fetched once from
+    /// `GET /advertiser/info/` and cached.
+    ///
+    /// Currency is presentation metadata, so any failure (transport,
+    /// envelope error, missing field) logs a warning and falls back to
+    /// `"USD"` rather than failing the campaign operation.
+    async fn currency(&self) -> String {
+        self.account_currency
+            .get_or_init(|| async {
+                let advertiser_ids = serde_json::json!([self.client.advertiser_id()]).to_string();
+                let params = [("advertiser_ids", advertiser_ids.as_str())];
+                match self.client.get("advertiser/info/", &params).await {
+                    Ok(data) => match data["list"][0]["currency"].as_str() {
+                        Some(currency) => currency.to_string(),
+                        None => {
+                            tracing::warn!(
+                                provider = "tiktok",
+                                "advertiser/info/ response missing 'currency'; assuming USD"
+                            );
+                            "USD".to_string()
+                        }
+                    },
+                    Err(error) => {
+                        tracing::warn!(
+                            provider = "tiktok",
+                            %error,
+                            "failed to fetch advertiser currency; assuming USD"
+                        );
+                        "USD".to_string()
+                    }
+                }
+            })
+            .await
+            .clone()
     }
 
     /// Fetch one campaign by ID via the filtered list endpoint.
@@ -44,7 +90,8 @@ impl TikTokProvider {
                 message: format!("campaign {id} not found"),
                 retry_after: None,
             })?;
-        mapping::tiktok_campaign_to_domain(row)
+        let currency = self.currency().await;
+        mapping::tiktok_campaign_to_domain(row, &currency)
     }
 }
 
@@ -114,11 +161,12 @@ impl MarketingProvider for TikTokProvider {
                 params.iter().map(|(k, v)| (*k, v.as_str())).collect();
             let data = self.client.get("campaign/get/", &param_refs).await?;
 
+            let currency = self.currency().await;
             let items = data["list"]
                 .as_array()
                 .unwrap_or(&Vec::new())
                 .iter()
-                .map(mapping::tiktok_campaign_to_domain)
+                .map(|row| mapping::tiktok_campaign_to_domain(row, &currency))
                 .collect::<Result<Vec<_>>>()?;
 
             // Page-number pagination: expose the next page as a cursor.
