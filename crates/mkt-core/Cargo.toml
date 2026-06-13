@@ -23,6 +23,7 @@ chrono.workspace = true
 comfy-table.workspace = true
 csv.workspace = true
 dirs.workspace = true
+governor.workspace = true
 hex.workspace = true
 sha2.workspace = true
 reqwest.workspace = true

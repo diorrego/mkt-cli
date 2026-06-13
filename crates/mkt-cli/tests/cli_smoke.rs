@@ -197,7 +197,7 @@ fn piped_stderr_has_no_ansi_escapes() {
     );
 }
 
-/// NO_COLOR must also strip ANSI even if a terminal were attached.
+/// `NO_COLOR` must also strip ANSI even if a terminal were attached.
 #[test]
 fn no_color_is_respected() {
     let output = Command::cargo_bin("mkt")

@@ -18,8 +18,10 @@ use crate::error::LinkedInErrorResponse;
 /// (YYYYMM; versions are supported for at least one year).
 const LINKEDIN_VERSION: &str = "202605";
 
-/// Maximum concurrent requests (semaphore permits).
-const MAX_CONCURRENT: usize = 100;
+/// Client-side request budget in cells per second (reads cost 1,
+/// writes 3). LinkedIn enforces daily app/member quotas; 2 rps keeps a long
+/// pagination run from burning the day budget.
+const REQUESTS_PER_SECOND: u32 = 2;
 
 /// A successful write response: LinkedIn creates return the new entity ID
 /// in the `x-restli-id` response header, with an empty body.
@@ -75,7 +77,7 @@ impl LinkedInClient {
             base_url,
             access_token,
             ad_account_id,
-            rate_limiter: RateLimiter::new(MAX_CONCURRENT),
+            rate_limiter: RateLimiter::new(REQUESTS_PER_SECOND),
             retry: RetryPolicy::none(),
         })
     }

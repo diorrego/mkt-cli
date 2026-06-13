@@ -16,8 +16,10 @@ use crate::error::GoogleApiErrorResponse;
 /// Google Ads API version used in the REST base URL.
 const API_VERSION: &str = "v24";
 
-/// Maximum concurrent requests (semaphore permits).
-const MAX_CONCURRENT: usize = 100;
+/// Client-side request budget in cells per second (reads cost 1,
+/// writes 3). Google meters dynamically per CID (no published QPS); 5 rps is the
+/// community-safe default.
+const REQUESTS_PER_SECOND: u32 = 5;
 
 /// Low-level client for the Google Ads REST API.
 #[derive(Debug)]
@@ -80,7 +82,7 @@ impl GoogleClient {
             developer_token,
             customer_id: customer_id.replace('-', ""),
             login_customer_id: login_customer_id.map(|id| id.replace('-', "")),
-            rate_limiter: RateLimiter::new(MAX_CONCURRENT),
+            rate_limiter: RateLimiter::new(REQUESTS_PER_SECOND),
             retry: RetryPolicy::none(),
         })
     }
