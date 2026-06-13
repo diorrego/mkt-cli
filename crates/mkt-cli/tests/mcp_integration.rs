@@ -178,7 +178,7 @@ fn tools_call_create_dry_run_previews_without_credentials() {
     );
 }
 
-/// `dry_run: true` on campaign_set_status must preview the transition.
+/// `dry_run: true` on `campaign_set_status` must preview the transition.
 #[test]
 fn tools_call_set_status_dry_run_previews() {
     let stdout = run_mcp_without_credentials(handshake_then_call(
