@@ -85,7 +85,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     let output_format = mkt_core::output::OutputFormat::from(cli.output);
 
     let result = match &cli.command {
-        Commands::Providers => Ok(commands::providers::execute()),
+        Commands::Providers => Ok(commands::providers::execute(cli.output.into())),
 
         Commands::Doctor => {
             commands::doctor::execute(cli.config.as_deref()).map_err(anyhow::Error::from)
