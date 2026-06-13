@@ -165,6 +165,15 @@ pub struct LinkedInConfig {
     /// Access token.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
+    /// OAuth client ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// OAuth client secret.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
+    /// OAuth refresh token.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
     /// Ad account ID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ad_account_id: Option<String>,
