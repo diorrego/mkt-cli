@@ -59,6 +59,9 @@ pub struct CampaignCreateParams {
     /// Provider-specific extra fields as a JSON object (e.g. LinkedIn
     /// campaignGroup URN).
     pub extra: Option<serde_json::Value>,
+    /// Preview only: when true, describe the would-be campaign without
+    /// calling the platform (no credentials needed).
+    pub dry_run: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -69,6 +72,9 @@ pub struct CampaignSetStatusParams {
     pub campaign_id: String,
     /// New status: "active" (starts spend!) or "paused".
     pub status: String,
+    /// Preview only: when true, describe the would-be transition without
+    /// calling the platform (no credentials needed).
+    pub dry_run: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -181,12 +187,27 @@ impl MktMcpServer {
         description = "Create an ad campaign. SPENDS MONEY when activated — campaigns \
                        are always created PAUSED; use campaign_set_status to start \
                        delivery explicitly. Google and LinkedIn require daily_budget; \
-                       LinkedIn also requires extra.campaignGroup (URN)."
+                       LinkedIn also requires extra.campaignGroup (URN). Pass \
+                       dry_run=true to preview without executing."
     )]
     async fn campaign_create(
         &self,
         Parameters(params): Parameters<CampaignCreateParams>,
     ) -> Result<CallToolResult, McpError> {
+        if params.dry_run.unwrap_or(false) {
+            return json_result(&serde_json::json!({
+                "dry_run": true,
+                "would_create": {
+                    "provider": params.provider,
+                    "name": params.name,
+                    "objective": params.objective,
+                    "daily_budget": params.daily_budget,
+                    "status": "PAUSED",
+                },
+                "note": "No API call was made. Campaigns are always created \
+                         PAUSED; activating spend is a separate explicit step.",
+            }));
+        }
         let input = CreateCampaignInput {
             name: params.name.clone(),
             objective: params.objective.clone(),
@@ -208,12 +229,24 @@ impl MktMcpServer {
     #[tool(
         description = "Set a campaign's status. 'active' STARTS AD SPEND — only do \
                        this when the user has explicitly confirmed. 'paused' stops \
-                       delivery."
+                       delivery. Pass dry_run=true to preview without executing."
     )]
     async fn campaign_set_status(
         &self,
         Parameters(params): Parameters<CampaignSetStatusParams>,
     ) -> Result<CallToolResult, McpError> {
+        if params.dry_run.unwrap_or(false) {
+            return json_result(&serde_json::json!({
+                "dry_run": true,
+                "would_set": {
+                    "provider": params.provider,
+                    "campaign_id": params.campaign_id,
+                    "status": params.status,
+                },
+                "note": "No API call was made. Setting status to 'active' \
+                         starts real ad spend — confirm with the user first.",
+            }));
+        }
         let id = CampaignId::from(params.campaign_id.as_str());
         let input = UpdateCampaignInput {
             status: Some(parse_status(&params.status)),
