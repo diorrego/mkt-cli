@@ -171,6 +171,15 @@ pub fn campaign_create_operation(
     input: &CreateCampaignInput,
     budget_resource_name: &str,
 ) -> serde_json::Value {
+    serde_json::json!([{ "create": campaign_create_object(input, budget_resource_name) }])
+}
+
+/// Build the campaign `create` JSON object shared by the per-resource and
+/// atomic mutate payloads.
+fn campaign_create_object(
+    input: &CreateCampaignInput,
+    budget_resource_name: &str,
+) -> serde_json::Value {
     let status = input
         .status
         .as_ref()
@@ -199,7 +208,62 @@ pub fn campaign_create_operation(
         }
     }
 
-    serde_json::json!([{ "create": create }])
+    create
+}
+
+/// Temporary resource ID linking the budget to the campaign inside one
+/// atomic `googleAds:mutate` request. Google resolves negative IDs to the
+/// resource created earlier in the same operation array.
+const TEMP_BUDGET_ID: &str = "-1";
+
+/// Build the `googleAds:mutate` operation array creating a campaign
+/// budget and its campaign atomically.
+///
+/// The budget is created under the temporary resource name
+/// `customers/{customer_id}/campaignBudgets/-1` and referenced by the
+/// campaign operation in the same request, so a campaign failure cannot
+/// leave an orphaned budget behind. The budget operation must precede
+/// the campaign operation: temporary IDs only resolve backwards within
+/// the array.
+///
+/// # Errors
+///
+/// Returns [`MktError::ValidationError`] if `input` carries no budget —
+/// Google Ads requires one per campaign.
+pub fn atomic_create_operations(
+    input: &CreateCampaignInput,
+    customer_id: &str,
+) -> Result<serde_json::Value> {
+    let budget = input
+        .budget
+        .as_ref()
+        .ok_or_else(|| MktError::ValidationError {
+            field: "budget".into(),
+            message: "a budget is required to create a Google Ads campaign".into(),
+        })?;
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    // budgets are positive and far below u64::MAX micros
+    let micros = (budget.amount * MICROS_PER_UNIT).round() as u64;
+    let temp_budget_resource = format!("customers/{customer_id}/campaignBudgets/{TEMP_BUDGET_ID}");
+
+    Ok(serde_json::json!([
+        {
+            "campaignBudgetOperation": {
+                "create": {
+                    "resourceName": temp_budget_resource,
+                    "name": format!("{} — budget", input.name),
+                    "amountMicros": micros.to_string(),
+                    "deliveryMethod": "STANDARD",
+                }
+            }
+        },
+        {
+            "campaignOperation": {
+                "create": campaign_create_object(input, &temp_budget_resource)
+            }
+        },
+    ]))
 }
 
 /// Build the `campaigns:mutate` update operation with its field mask.
@@ -243,6 +307,35 @@ pub fn campaign_id_from_mutate(resp: &serde_json::Value) -> Result<String> {
             provider: "google".into(),
             status: 0,
             message: "mutate response missing results[0].resourceName".into(),
+            retry_after: None,
+        })
+}
+
+/// Extract the numeric campaign ID from an atomic `googleAds:mutate`
+/// response.
+///
+/// Scans `mutateOperationResponses` for the entry carrying a
+/// `campaignResult` — matching by key rather than by position keeps the
+/// extraction correct regardless of how operations were ordered.
+///
+/// # Errors
+///
+/// Returns [`MktError::ApiError`] if no entry carries a
+/// `campaignResult.resourceName`.
+pub fn campaign_id_from_atomic_mutate(resp: &serde_json::Value) -> Result<String> {
+    resp["mutateOperationResponses"]
+        .as_array()
+        .and_then(|responses| {
+            responses
+                .iter()
+                .find_map(|entry| entry["campaignResult"]["resourceName"].as_str())
+        })
+        .and_then(|name| name.rsplit('/').next())
+        .map(String::from)
+        .ok_or_else(|| MktError::ApiError {
+            provider: "google".into(),
+            status: 0,
+            message: "atomic mutate response missing campaignResult.resourceName".into(),
             retry_after: None,
         })
 }
@@ -448,6 +541,112 @@ mod tests {
             ops[0]["create"]["campaignBudget"],
             "customers/1/campaignBudgets/2"
         );
+    }
+
+    #[test]
+    fn test_atomic_create_operations_budget_precedes_campaign() {
+        let input = CreateCampaignInput {
+            name: "X".into(),
+            objective: "search".into(),
+            status: None,
+            budget: Some(Budget {
+                amount: 12.34,
+                currency: "USD".into(),
+                kind: BudgetKind::Daily,
+            }),
+            extra: None,
+        };
+        let ops = atomic_create_operations(&input, "123").expect("budget present");
+
+        let budget_create = &ops[0]["campaignBudgetOperation"]["create"];
+        assert_eq!(
+            budget_create["resourceName"],
+            "customers/123/campaignBudgets/-1"
+        );
+        assert_eq!(budget_create["amountMicros"], "12340000");
+        assert_eq!(budget_create["name"], "X — budget");
+        assert_eq!(budget_create["deliveryMethod"], "STANDARD");
+
+        let campaign_create = &ops[1]["campaignOperation"]["create"];
+        assert_eq!(
+            campaign_create["campaignBudget"], "customers/123/campaignBudgets/-1",
+            "campaign must reference the budget's temporary resource name"
+        );
+        assert_eq!(campaign_create["status"], "PAUSED");
+        assert_eq!(campaign_create["advertisingChannelType"], "SEARCH");
+        assert_eq!(
+            campaign_create["containsEuPoliticalAdvertising"],
+            "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING"
+        );
+    }
+
+    #[test]
+    fn test_atomic_create_operations_without_budget_is_validation_error() {
+        let input = CreateCampaignInput {
+            name: "X".into(),
+            objective: "SEARCH".into(),
+            status: None,
+            budget: None,
+            extra: None,
+        };
+        let err = atomic_create_operations(&input, "123").expect_err("budget is required");
+        assert!(
+            matches!(err, MktError::ValidationError { .. }),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_atomic_create_operations_extra_bidding_replaces_manual_cpc() {
+        let input = CreateCampaignInput {
+            name: "X".into(),
+            objective: "PERFORMANCE_MAX".into(),
+            status: None,
+            budget: Some(Budget {
+                amount: 5.0,
+                currency: "USD".into(),
+                kind: BudgetKind::Daily,
+            }),
+            extra: Some(serde_json::json!({ "maximizeConversionValue": {} })),
+        };
+        let ops = atomic_create_operations(&input, "123").expect("budget present");
+        let create = &ops[1]["campaignOperation"]["create"];
+        assert!(create.get("maximizeConversionValue").is_some());
+        assert!(
+            create.get("manualCpc").is_none(),
+            "default manualCpc must yield to the explicit strategy: {create}"
+        );
+    }
+
+    #[test]
+    fn test_campaign_id_from_atomic_mutate_finds_campaign_result_by_key() {
+        let resp = serde_json::json!({
+            "mutateOperationResponses": [
+                { "campaignBudgetResult": {
+                    "resourceName": "customers/123/campaignBudgets/555"
+                }},
+                { "campaignResult": {
+                    "resourceName": "customers/123/campaigns/789"
+                }}
+            ]
+        });
+        assert_eq!(
+            campaign_id_from_atomic_mutate(&resp).expect("should extract"),
+            "789"
+        );
+    }
+
+    #[test]
+    fn test_campaign_id_from_atomic_mutate_missing_campaign_result_is_error() {
+        let resp = serde_json::json!({
+            "mutateOperationResponses": [
+                { "campaignBudgetResult": {
+                    "resourceName": "customers/123/campaignBudgets/555"
+                }}
+            ]
+        });
+        let err = campaign_id_from_atomic_mutate(&resp).expect_err("no campaignResult");
+        assert!(err.to_string().contains("campaignResult"), "got: {err}");
     }
 
     #[test]
