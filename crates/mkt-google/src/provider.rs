@@ -142,26 +142,13 @@ impl MarketingProvider for GoogleProvider {
         input: &CreateCampaignInput,
     ) -> impl std::future::Future<Output = Result<Campaign>> + Send {
         async move {
-            // Google requires a budget resource before the campaign.
-            let budget_ops = mapping::budget_create_operation(input).ok_or_else(|| {
-                MktError::ValidationError {
-                    field: "budget".into(),
-                    message: "a budget is required to create a Google Ads campaign".into(),
-                }
-            })?;
-            let budget_resp = self.client.mutate("campaignBudgets", &budget_ops).await?;
-            let budget_resource = budget_resp["results"][0]["resourceName"]
-                .as_str()
-                .ok_or_else(|| MktError::ApiError {
-                    provider: "google".into(),
-                    status: 0,
-                    message: "budget mutate response missing resourceName".into(),
-                    retry_after: None,
-                })?;
-
-            let campaign_ops = mapping::campaign_create_operation(input, budget_resource);
-            let campaign_resp = self.client.mutate("campaigns", &campaign_ops).await?;
-            let new_id = mapping::campaign_id_from_mutate(&campaign_resp)?;
+            // Budget and campaign go out in ONE atomic googleAds:mutate
+            // request: the budget is created under a temporary negative ID
+            // and referenced by the campaign, so a campaign failure can no
+            // longer leave an orphaned budget behind.
+            let ops = mapping::atomic_create_operations(input, self.client.customer_id())?;
+            let resp = self.client.mutate_atomic(&ops).await?;
+            let new_id = mapping::campaign_id_from_atomic_mutate(&resp)?;
 
             self.fetch_campaign(&new_id).await
         }
