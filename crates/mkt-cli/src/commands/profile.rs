@@ -59,6 +59,7 @@ fn set_profile(
     if access_token.is_some() || ad_account.is_some() || page_id.is_some() || ig_user_id.is_some() {
         let meta = profile.meta.get_or_insert(config::MetaConfig {
             access_token: None,
+            app_secret: None,
             ad_account_id: None,
             page_id: None,
             ig_user_id: None,
