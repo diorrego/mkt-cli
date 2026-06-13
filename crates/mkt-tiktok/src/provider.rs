@@ -234,15 +234,30 @@ impl MarketingProvider for TikTokProvider {
     #[instrument(skip(self))]
     fn list_audiences(&self) -> impl std::future::Future<Output = Result<Vec<Audience>>> + Send {
         async move {
-            let params = [
-                ("advertiser_id", self.client.advertiser_id()),
-                ("page_size", "100"),
-            ];
-            let data = self
-                .client
-                .get("dmp/custom_audience/list/", &params)
-                .await?;
-            mapping::tiktok_audiences_to_domain(&data)
+            // 100 is the documented page_size maximum; aggregate every
+            // page so accounts with >100 audiences see all of them.
+            let mut audiences = Vec::new();
+            let mut page: u64 = 1;
+            loop {
+                let page_string = page.to_string();
+                let params = [
+                    ("advertiser_id", self.client.advertiser_id()),
+                    ("page_size", "100"),
+                    ("page", page_string.as_str()),
+                ];
+                let data = self
+                    .client
+                    .get("dmp/custom_audience/list/", &params)
+                    .await?;
+                audiences.extend(mapping::tiktok_audiences_to_domain(&data)?);
+
+                let total_pages = data["page_info"]["total_page"].as_u64().unwrap_or(1);
+                if page >= total_pages {
+                    break;
+                }
+                page += 1;
+            }
+            Ok(audiences)
         }
     }
 
@@ -275,7 +290,8 @@ impl MarketingProvider for TikTokProvider {
                 ("data_level", "AUCTION_CAMPAIGN".to_string()),
                 ("dimensions", dimensions),
                 ("metrics", metrics),
-                ("page_size", "200".to_string()),
+                // 1000 is the documented page_size maximum.
+                ("page_size", "1000".to_string()),
             ];
 
             if let Some(range) = &query.date_range {
@@ -285,13 +301,41 @@ impl MarketingProvider for TikTokProvider {
                 params.push(("query_lifetime", "true".to_string()));
             }
 
-            let param_refs: Vec<(&str, &str)> =
-                params.iter().map(|(k, v)| (*k, v.as_str())).collect();
-            let data = self
-                .client
-                .get("report/integrated/get/", &param_refs)
-                .await?;
-            mapping::tiktok_report_to_domain(&data)
+            // Aggregate every page (page_info.total_page) — a truncated
+            // report silently loses spend data.
+            let mut report: Option<InsightsReport> = None;
+            let mut page: u64 = 1;
+            loop {
+                let page_string = page.to_string();
+                let mut param_refs: Vec<(&str, &str)> =
+                    params.iter().map(|(k, v)| (*k, v.as_str())).collect();
+                param_refs.push(("page", page_string.as_str()));
+
+                let data = self
+                    .client
+                    .get("report/integrated/get/", &param_refs)
+                    .await?;
+                let chunk = mapping::tiktok_report_to_domain(&data)?;
+                report = Some(match report.take() {
+                    None => chunk,
+                    Some(mut acc) => {
+                        acc.rows.extend(chunk.rows);
+                        acc
+                    }
+                });
+
+                let total_pages = data["page_info"]["total_page"].as_u64().unwrap_or(1);
+                if page >= total_pages {
+                    break;
+                }
+                page += 1;
+            }
+            report.ok_or_else(|| MktError::ApiError {
+                provider: "tiktok".into(),
+                status: 0,
+                message: "report returned no pages".into(),
+                retry_after: None,
+            })
         }
     }
 
