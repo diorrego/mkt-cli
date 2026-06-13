@@ -62,11 +62,15 @@ fn id_to_string(value: &serde_json::Value) -> Option<String> {
 
 /// Convert a v1.3 campaign list item into a domain [`Campaign`].
 ///
+/// `currency` is the advertiser account currency (from
+/// `GET /advertiser/info/`); campaign objects do not carry their own
+/// currency field.
+///
 /// # Errors
 ///
 /// Returns [`MktError::ApiError`] if required fields (`campaign_id`,
 /// `campaign_name`) are missing.
-pub fn tiktok_campaign_to_domain(raw: &serde_json::Value) -> Result<Campaign> {
+pub fn tiktok_campaign_to_domain(raw: &serde_json::Value, currency: &str) -> Result<Campaign> {
     let id = id_to_string(&raw["campaign_id"]).ok_or_else(|| missing_field("campaign_id"))?;
     let name = raw["campaign_name"]
         .as_str()
@@ -84,7 +88,7 @@ pub fn tiktok_campaign_to_domain(raw: &serde_json::Value) -> Result<Campaign> {
         };
         Some(Budget {
             amount,
-            currency: "USD".to_string(),
+            currency: currency.to_string(),
             kind,
         })
     });
@@ -321,7 +325,7 @@ mod tests {
             "create_time": "2026-01-13 13:44:30",
             "modify_time": "2026-03-01 09:12:00"
         });
-        let c = tiktok_campaign_to_domain(&raw).expect("should parse");
+        let c = tiktok_campaign_to_domain(&raw, "EUR").expect("should parse");
         assert_eq!(c.id.0, "1680018437245954");
         assert_eq!(c.provider, "tiktok");
         assert_eq!(c.status, CampaignStatus::Active);
@@ -329,6 +333,7 @@ mod tests {
         let b = c.budget.expect("budget maps");
         assert!((b.amount - 50.0).abs() < f64::EPSILON);
         assert_eq!(b.kind, BudgetKind::Daily);
+        assert_eq!(b.currency, "EUR", "budget uses the provided currency");
         assert!(c.updated_at.is_some());
     }
 
@@ -342,14 +347,14 @@ mod tests {
             "operation_status": "ENABLE",
             "create_time": "2026-01-01 00:00:00"
         });
-        let c = tiktok_campaign_to_domain(&raw).expect("should parse");
+        let c = tiktok_campaign_to_domain(&raw, "USD").expect("should parse");
         assert!(c.budget.is_none());
     }
 
     #[test]
     fn test_campaign_mapping_missing_name_is_error() {
         let raw = serde_json::json!({ "campaign_id": 1 });
-        assert!(tiktok_campaign_to_domain(&raw).is_err());
+        assert!(tiktok_campaign_to_domain(&raw, "USD").is_err());
     }
 
     #[test]

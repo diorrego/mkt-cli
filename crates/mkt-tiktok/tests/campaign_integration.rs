@@ -111,6 +111,121 @@ async fn test_list_campaigns_status_filter_is_json_encoded() {
     assert_eq!(parsed["secondary_status"], "CAMPAIGN_STATUS_ENABLE");
 }
 
+/// Verify the advertiser account currency from `GET /advertiser/info/`
+/// flows into campaign budgets, and that the lookup happens only once per
+/// provider instance (the `expect(1)` fails if a second list re-queries).
+#[tokio::test]
+async fn test_list_campaigns_uses_account_currency() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/advertiser/info/"))
+        .and(header("Access-Token", ACCESS_TOKEN))
+        .and(query_param(
+            "advertiser_ids",
+            format!("[\"{ADVERTISER_ID}\"]"),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "code": 0, "message": "OK", "request_id": "x",
+            "data": {
+                "list": [{
+                    "advertiser_id": ADVERTISER_ID,
+                    "name": "Acme EU",
+                    "currency": "EUR",
+                    "timezone": "Europe/Madrid",
+                    "status": "STATUS_ENABLE"
+                }]
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/campaign/get/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixtures::campaigns_get_response()))
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let page = provider
+        .list_campaigns(&CampaignFilters::default())
+        .await
+        .expect("list_campaigns should succeed");
+    let budget = page.data[0].budget.as_ref().expect("budget should map");
+    assert_eq!(
+        budget.currency, "EUR",
+        "budget must use the account currency"
+    );
+
+    // Second call on the same provider must reuse the cached currency
+    // (advertiser/info/ is expect(1) above).
+    let page2 = provider
+        .list_campaigns(&CampaignFilters::default())
+        .await
+        .expect("second list_campaigns should succeed");
+    let budget2 = page2.data[0].budget.as_ref().expect("budget should map");
+    assert_eq!(budget2.currency, "EUR");
+}
+
+/// If `GET /advertiser/info/` fails, campaign listings must still work,
+/// falling back to USD instead of propagating the metadata error.
+#[tokio::test]
+async fn test_list_campaigns_currency_falls_back_to_usd_on_error() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/advertiser/info/"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/campaign/get/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixtures::campaigns_get_response()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let page = provider
+        .list_campaigns(&CampaignFilters::default())
+        .await
+        .expect("list_campaigns must survive an advertiser/info/ failure");
+    let budget = page.data[0].budget.as_ref().expect("budget should map");
+    assert_eq!(budget.currency, "USD", "currency must fall back to USD");
+}
+
+/// `filters.limit` above TikTok's documented maximum must be clamped to
+/// `page_size=1000`, otherwise `/campaign/get/` rejects the request.
+#[tokio::test]
+async fn test_list_campaigns_clamps_page_size_to_max() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/campaign/get/"))
+        .and(query_param("page_size", "1000"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "code": 0, "message": "OK", "request_id": "x",
+            "data": { "list": [], "page_info": { "page": 1, "page_size": 1000, "total_number": 0, "total_page": 0 } }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let filters = CampaignFilters {
+        limit: Some(5000),
+        ..Default::default()
+    };
+    provider
+        .list_campaigns(&filters)
+        .await
+        .expect("clamped list should succeed");
+}
+
 // ── get_campaign ──────────────────────────────────────────────────────────────
 
 /// Verify `get_campaign` filters by campaign ID and returns the first match.
