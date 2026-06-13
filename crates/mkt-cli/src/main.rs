@@ -22,11 +22,15 @@ fn main() -> std::process::ExitCode {
         "info"
     };
     // Diagnostics always go to stderr: stdout is reserved for data
-    // (and for the MCP protocol when serving).
+    // (and for the MCP protocol when serving). ANSI only when stderr is a
+    // color-capable terminal — anstream's choice covers NO_COLOR,
+    // CLICOLOR_FORCE, TERM=dumb, and TTY detection.
+    let ansi = anstream::AutoStream::choice(&std::io::stderr()) != anstream::ColorChoice::Never;
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
         .with_writer(std::io::stderr)
+        .with_ansi(ansi)
         .init();
 
     // Build tokio runtime
@@ -44,8 +48,21 @@ fn main() -> std::process::ExitCode {
     let emit_json_errors = matches!(cli.output, cli::OutputFormatArg::Json);
     match rt.block_on(run(cli)) {
         Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) if is_broken_pipe(&e) => {
+            // Downstream (e.g. `| head`) closed the pipe: that is a
+            // normal way for output to end, not an error.
+            std::process::ExitCode::SUCCESS
+        }
         Err(e) => report_error(&e, emit_json_errors),
     }
+}
+
+/// Whether the error chain bottoms out in a closed pipe.
+fn is_broken_pipe(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .filter_map(|cause| cause.downcast_ref::<std::io::Error>())
+        .any(|io| io.kind() == std::io::ErrorKind::BrokenPipe)
 }
 
 /// Print an error to stderr (structured JSON when `--output json`) and
@@ -127,7 +144,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     match result {
         Ok(output) => {
             if !cli.quiet && !output.is_empty() {
-                println!("{output}");
+                use std::io::Write as _;
+                let mut stdout = std::io::stdout().lock();
+                writeln!(stdout, "{output}")?;
             }
             Ok(())
         }

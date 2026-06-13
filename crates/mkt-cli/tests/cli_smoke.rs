@@ -158,6 +158,58 @@ fn short_flags_work() {
     serde_json::from_str::<serde_json::Value>(stdout.trim()).expect("-o json must produce JSON");
 }
 
+/// `mkt ... | head` must exit 0 when downstream closes the pipe, not
+/// panic or report an error (clig.dev: be a good pipe citizen).
+#[test]
+#[cfg(unix)]
+fn closed_stdout_pipe_exits_cleanly() {
+    use std::process::{Command as StdCommand, Stdio};
+
+    let bin = assert_cmd::cargo::cargo_bin("mkt");
+    let mut child = StdCommand::new(bin)
+        .args(["providers"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // Close our read end immediately so the child's writes hit EPIPE.
+    drop(child.stdout.take());
+    let status = child.wait().unwrap();
+    assert!(
+        status.success(),
+        "a closed pipe is a normal end of output, got {status:?}"
+    );
+}
+
+/// Diagnostics must not contain ANSI escapes when stderr is not a
+/// terminal (it never is under the test harness).
+#[test]
+fn piped_stderr_has_no_ansi_escapes() {
+    let output = Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["--verbose", "providers"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains('\u{1b}'),
+        "piped stderr must be ANSI-free: {stderr:?}"
+    );
+}
+
+/// NO_COLOR must also strip ANSI even if a terminal were attached.
+#[test]
+fn no_color_is_respected() {
+    let output = Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["--verbose", "providers"])
+        .env("NO_COLOR", "1")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains('\u{1b}'), "NO_COLOR must win: {stderr:?}");
+}
+
 // ── Exit code + structured error contract (for agents/scripts) ────────────────
 
 /// Missing credentials must exit with code 3 (auth error).
