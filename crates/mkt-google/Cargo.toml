@@ -14,7 +14,7 @@ description = "Google Ads provider for the mkt marketing CLI"
 workspace = true
 
 [dependencies]
-mkt-cli-core = { path = "../mkt-core", version = "0.2.0" }
+mkt-cli-core = { path = "../mkt-core", version = "0.3.0" }
 chrono.workspace = true
 reqwest.workspace = true
 secrecy.workspace = true
