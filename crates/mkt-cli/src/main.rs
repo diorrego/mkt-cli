@@ -261,7 +261,7 @@ async fn handle_linkedin(
     output_format: mkt_core::output::OutputFormat,
 ) -> anyhow::Result<String> {
     let config = providers::load_config(cli.config.as_deref())?;
-    let provider = providers::build_linkedin(&config, &cli.profile)?;
+    let provider = providers::build_linkedin(&config, &cli.profile).await?;
 
     match domain {
         cli::LinkedinDomain::Campaign { action } => {

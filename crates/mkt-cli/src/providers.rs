@@ -174,22 +174,57 @@ pub fn build_tiktok(
 }
 
 /// Build a LinkedIn provider for the given profile.
+///
+/// Resolves the access token from `MKT_LINKEDIN_ACCESS_TOKEN` or the
+/// profile config or, failing that, exchanges the configured `OAuth2`
+/// refresh token (which requires LinkedIn MDP approval).
 #[cfg(feature = "linkedin")]
-pub fn build_linkedin(
+pub async fn build_linkedin(
     config: &MktConfig,
     profile_name: &str,
 ) -> anyhow::Result<mkt_linkedin::LinkedInProvider> {
-    use mkt_core::auth;
-    use secrecy::ExposeSecret;
-
     let profile = config.profile(profile_name).ok();
     let li_config = profile.and_then(|p| p.linkedin.as_ref());
 
-    let token = auth::resolve_token(
-        "linkedin",
-        "MKT_LINKEDIN_ACCESS_TOKEN",
-        li_config.and_then(|c| c.access_token.as_deref()),
-    )?;
+    let access_token = if let Ok(token) = std::env::var("MKT_LINKEDIN_ACCESS_TOKEN") {
+        secrecy::SecretString::from(token)
+    } else if let Some(token) = li_config.and_then(|c| c.access_token.clone()) {
+        secrecy::SecretString::from(token)
+    } else {
+        // The OAuth trio resolves env-first like every other credential.
+        let trio_from_env = (
+            std::env::var("MKT_LINKEDIN_CLIENT_ID").ok(),
+            std::env::var("MKT_LINKEDIN_CLIENT_SECRET").ok(),
+            std::env::var("MKT_LINKEDIN_REFRESH_TOKEN").ok(),
+        );
+        let (client_id, client_secret, refresh_token) = match trio_from_env {
+            (Some(id), Some(secret), Some(refresh)) => (id, secret, refresh),
+            _ => li_config
+                .and_then(|c| {
+                    Some((
+                        c.client_id.clone()?,
+                        c.client_secret.clone()?,
+                        c.refresh_token.clone()?,
+                    ))
+                })
+                .ok_or_else(|| {
+                    MktError::auth_error(
+                        "linkedin",
+                        "No access token found. Set MKT_LINKEDIN_ACCESS_TOKEN, set the \
+                         MKT_LINKEDIN_CLIENT_ID/CLIENT_SECRET/REFRESH_TOKEN trio, or \
+                         configure client_id, client_secret, and refresh_token in \
+                         your profile.",
+                    )
+                })?,
+        };
+        mkt_linkedin::refresh_access_token(
+            &client_id,
+            &secrecy::SecretString::from(client_secret),
+            &secrecy::SecretString::from(refresh_token),
+            mkt_linkedin::LINKEDIN_TOKEN_URL,
+        )
+        .await?
+    };
 
     let ad_account_id = std::env::var("MKT_LINKEDIN_AD_ACCOUNT_ID")
         .ok()
@@ -202,9 +237,6 @@ pub fn build_linkedin(
             )
         })?;
 
-    let client = mkt_linkedin::LinkedInClient::new(
-        secrecy::SecretString::from(token.expose_secret().to_string()),
-        ad_account_id,
-    )?;
+    let client = mkt_linkedin::LinkedInClient::new(access_token, ad_account_id)?;
     Ok(mkt_linkedin::LinkedInProvider::new(client))
 }

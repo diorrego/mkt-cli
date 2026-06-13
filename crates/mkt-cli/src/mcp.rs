@@ -135,8 +135,9 @@ macro_rules! dispatch_provider {
                 $body
             }
             "linkedin" => {
-                let $p =
-                    providers::build_linkedin(&config, &$self.profile).map_err(to_mcp_error)?;
+                let $p = providers::build_linkedin(&config, &$self.profile)
+                    .await
+                    .map_err(to_mcp_error)?;
                 $body
             }
             other => Err(McpError::invalid_params(
