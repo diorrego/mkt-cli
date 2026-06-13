@@ -9,6 +9,10 @@ use mkt_core::provider::{MarketingProvider, ProviderCapabilities};
 use tracing::instrument;
 
 use crate::client::GoogleClient;
+
+/// Upper bound on insights pages fetched per query (defense against
+/// runaway cursors; each page holds thousands of rows).
+const MAX_PAGES: usize = 100;
 use crate::mapping;
 
 /// Google Ads marketing provider.
@@ -101,7 +105,10 @@ impl MarketingProvider for GoogleProvider {
                 query = format!("{query} LIMIT {limit}");
             }
 
-            let resp = self.client.search(&query).await?;
+            let resp = self
+                .client
+                .search_page(&query, filters.cursor.as_deref())
+                .await?;
 
             let items = resp["results"]
                 .as_array()
@@ -221,8 +228,34 @@ impl MarketingProvider for GoogleProvider {
                 },
             );
 
-            let resp = self.client.search(&gaql).await?;
-            mapping::google_insights_to_domain(&resp)
+            // Aggregate every page: a truncated report silently loses
+            // spend data. Page count is bounded by the API's 10k rows/page.
+            let mut report: Option<InsightsReport> = None;
+            let mut page_token: Option<String> = None;
+            for _ in 0..MAX_PAGES {
+                let resp = self
+                    .client
+                    .search_page(&gaql, page_token.as_deref())
+                    .await?;
+                let page = mapping::google_insights_to_domain(&resp)?;
+                report = Some(match report.take() {
+                    None => page,
+                    Some(mut acc) => {
+                        acc.rows.extend(page.rows);
+                        acc
+                    }
+                });
+                page_token = resp["nextPageToken"].as_str().map(String::from);
+                if page_token.is_none() {
+                    break;
+                }
+            }
+            report.ok_or_else(|| MktError::ApiError {
+                provider: "google".into(),
+                status: 0,
+                message: "insights search returned no pages".into(),
+                retry_after: None,
+            })
         }
     }
 

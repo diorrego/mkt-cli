@@ -447,6 +447,97 @@ async fn test_get_insights_lifetime_omits_time_dimension() {
     assert!(dims_array.iter().any(|d| d == "campaign_id"));
 }
 
+/// Reports above one page must aggregate all pages (`total_page` from
+/// `page_info`) instead of silently truncating.
+#[tokio::test]
+async fn test_get_insights_aggregates_report_pages() {
+    let server = MockServer::start().await;
+
+    let row = |id: &str| {
+        serde_json::json!({
+            "dimensions": { "campaign_id": id },
+            "metrics": { "spend": "10.0", "impressions": "100" }
+        })
+    };
+    let page = |rows: serde_json::Value, page: u32| {
+        serde_json::json!({
+            "code": 0, "message": "OK", "request_id": "x",
+            "data": {
+                "list": rows,
+                "page_info": { "page": page, "page_size": 1000, "total_number": 2, "total_page": 2 }
+            }
+        })
+    };
+
+    Mock::given(method("GET"))
+        .and(path("/report/integrated/get/"))
+        .and(query_param("page", "1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(page(serde_json::json!([row("1")]), 1)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/report/integrated/get/"))
+        .and(query_param("page", "2"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(page(serde_json::json!([row("2")]), 2)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let report = provider
+        .get_insights(&InsightsQuery::default())
+        .await
+        .expect("paged report should succeed");
+    assert_eq!(report.rows.len(), 2, "both report pages must aggregate");
+}
+
+/// Accounts with more than 100 audiences (the per-page maximum) must see
+/// every audience, not just the first page.
+#[tokio::test]
+async fn test_list_audiences_aggregates_pages() {
+    let server = MockServer::start().await;
+
+    let aud = |id: u64, name: &str| serde_json::json!({ "custom_audience_id": id, "name": name, "cover_num": 10 });
+    Mock::given(method("GET"))
+        .and(path("/dmp/custom_audience/list/"))
+        .and(query_param("page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "code": 0, "message": "OK", "request_id": "x",
+            "data": {
+                "list": [aud(1, "A")],
+                "page_info": { "page": 1, "page_size": 100, "total_number": 2, "total_page": 2 }
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/dmp/custom_audience/list/"))
+        .and(query_param("page", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "code": 0, "message": "OK", "request_id": "x",
+            "data": {
+                "list": [aud(2, "B")],
+                "page_info": { "page": 2, "page_size": 100, "total_number": 2, "total_page": 2 }
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let audiences = provider
+        .list_audiences()
+        .await
+        .expect("paged audiences should succeed");
+    assert_eq!(audiences.len(), 2, "both audience pages must aggregate");
+}
+
 // ── audiences ─────────────────────────────────────────────────────────────────
 
 /// Verify `list_audiences` maps DMP custom audiences.
