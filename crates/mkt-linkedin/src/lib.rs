@@ -6,10 +6,12 @@
 
 #![warn(missing_docs)]
 
+mod auth;
 mod client;
 mod error;
 pub mod mapping;
 mod provider;
 
+pub use auth::{LINKEDIN_TOKEN_URL, refresh_access_token};
 pub use client::{LinkedInClient, WriteResponse};
 pub use provider::LinkedInProvider;
