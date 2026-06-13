@@ -63,6 +63,28 @@ pub fn campaign_mutate_response() -> serde_json::Value {
     })
 }
 
+/// A successful atomic `googleAds:mutate` response for a combined
+/// budget + campaign creation (`responseContentType: MUTABLE_RESOURCE`).
+///
+/// Operation responses arrive in the same order as the request
+/// operations: budget first, then campaign.
+pub fn atomic_mutate_response() -> serde_json::Value {
+    serde_json::json!({
+        "mutateOperationResponses": [
+            {
+                "campaignBudgetResult": {
+                    "resourceName": "customers/1234567890/campaignBudgets/999003"
+                }
+            },
+            {
+                "campaignResult": {
+                    "resourceName": "customers/1234567890/campaigns/333333"
+                }
+            }
+        ]
+    })
+}
+
 /// A `googleAds:search` response for an insights (metrics) query.
 pub fn insights_search_response() -> serde_json::Value {
     serde_json::json!({
@@ -146,6 +168,25 @@ mod tests {
         let v = campaign_mutate_response();
         let name = v["results"][0]["resourceName"].as_str().expect("string");
         assert!(name.contains("/campaigns/"));
+    }
+
+    #[test]
+    fn atomic_mutate_response_budget_result_precedes_campaign_result() {
+        let v = atomic_mutate_response();
+        let responses = v["mutateOperationResponses"].as_array().expect("array");
+        assert_eq!(responses.len(), 2);
+        assert!(
+            responses[0]["campaignBudgetResult"]["resourceName"]
+                .as_str()
+                .expect("string")
+                .contains("/campaignBudgets/")
+        );
+        assert!(
+            responses[1]["campaignResult"]["resourceName"]
+                .as_str()
+                .expect("string")
+                .contains("/campaigns/")
+        );
     }
 
     #[test]

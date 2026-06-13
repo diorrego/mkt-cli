@@ -175,50 +175,57 @@ async fn test_get_campaign_empty_result_is_not_found() {
 
 // ── create_campaign ───────────────────────────────────────────────────────────
 
-/// Verify the two-step create: budget mutate, then campaign mutate, then a
-/// GAQL fetch of the created campaign.
+/// Verify that creating a campaign issues ONE atomic `googleAds:mutate`
+/// request carrying both operations: the budget is created under the
+/// temporary negative ID `-1`, the campaign references that temporary
+/// resource name, and `partialFailure` is disabled so either both
+/// resources are created or neither is — a campaign failure can no
+/// longer leave an orphaned budget behind.
 #[tokio::test]
-async fn test_create_campaign_creates_budget_then_campaign() {
+async fn test_create_campaign_is_one_atomic_mutate() {
     let server = MockServer::start().await;
 
-    // Step 1: budget creation.
+    // Single atomic mutate: budget operation MUST precede the campaign
+    // operation that references its temporary resource name.
     Mock::given(method("POST"))
-        .and(path(format!(
-            "/customers/{CUSTOMER_ID}/campaignBudgets:mutate"
-        )))
+        .and(path(format!("/customers/{CUSTOMER_ID}/googleAds:mutate")))
         .and(body_partial_json(serde_json::json!({
-            "operations": [{ "create": { "amountMicros": "5000000" } }]
-        })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(fixtures::budget_mutate_response()))
-        .expect(1)
-        .mount(&server)
-        .await;
-
-    // Step 2: campaign creation referencing the budget.
-    Mock::given(method("POST"))
-        .and(path(format!("/customers/{CUSTOMER_ID}/campaigns:mutate")))
-        .and(body_partial_json(serde_json::json!({
-            "operations": [{
-                "create": {
-                    "name": "New Search Campaign",
-                    "status": "PAUSED",
-                    "advertisingChannelType": "SEARCH",
-                    "campaignBudget": "customers/1234567890/campaignBudgets/999003",
-                    // Mandatory since 2026-04-01: mutates fail without the
-                    // EU political advertising declaration (EU-PAR).
-                    "containsEuPoliticalAdvertising":
-                        "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
+            "mutateOperations": [
+                {
+                    "campaignBudgetOperation": {
+                        "create": {
+                            "resourceName":
+                                format!("customers/{CUSTOMER_ID}/campaignBudgets/-1"),
+                            "amountMicros": "5000000",
+                            "deliveryMethod": "STANDARD",
+                        }
+                    }
+                },
+                {
+                    "campaignOperation": {
+                        "create": {
+                            "name": "New Search Campaign",
+                            "status": "PAUSED",
+                            "advertisingChannelType": "SEARCH",
+                            "campaignBudget":
+                                format!("customers/{CUSTOMER_ID}/campaignBudgets/-1"),
+                            // Mandatory since 2026-04-01: mutates fail without
+                            // the EU political advertising declaration (EU-PAR).
+                            "containsEuPoliticalAdvertising":
+                                "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
+                        }
+                    }
                 }
-            }]
+            ],
+            "partialFailure": false,
+            "responseContentType": "MUTABLE_RESOURCE",
         })))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(fixtures::campaign_mutate_response()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixtures::atomic_mutate_response()))
         .expect(1)
         .mount(&server)
         .await;
 
-    // Step 3: GAQL fetch of the created campaign.
+    // GAQL fetch of the created campaign.
     Mock::given(method("POST"))
         .and(path(format!("/customers/{CUSTOMER_ID}/googleAds:search")))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -280,6 +287,52 @@ async fn test_create_campaign_without_budget_is_validation_error() {
         .await
         .expect_err("missing budget must fail before any HTTP call");
     assert_eq!(err.exit_code(), 2, "validation contract, got: {err}");
+}
+
+/// A mutate response carrying no `campaignResult` (e.g. a partial or
+/// malformed reply) must surface as a clean error, never a panic.
+#[tokio::test]
+async fn test_create_campaign_mutate_without_campaign_result_is_error() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path(format!("/customers/{CUSTOMER_ID}/googleAds:mutate")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "mutateOperationResponses": [
+                {
+                    "campaignBudgetResult": {
+                        "resourceName":
+                            format!("customers/{CUSTOMER_ID}/campaignBudgets/999003")
+                    }
+                }
+            ]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let input = CreateCampaignInput {
+        name: "New Search Campaign".into(),
+        objective: "SEARCH".into(),
+        status: None,
+        budget: Some(Budget {
+            amount: 5.0,
+            currency: "USD".into(),
+            kind: BudgetKind::Daily,
+        }),
+        extra: None,
+    };
+
+    let err = provider
+        .create_campaign(&input)
+        .await
+        .expect_err("missing campaignResult must be a clean error");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("campaignResult"),
+        "error should name the missing field, got: {msg}"
+    );
 }
 
 // ── update / delete ───────────────────────────────────────────────────────────
@@ -448,19 +501,8 @@ async fn test_create_campaign_extra_bidding_strategy_replaces_manual_cpc() {
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
-        .and(path(format!(
-            "/customers/{CUSTOMER_ID}/campaignBudgets:mutate"
-        )))
-        .respond_with(ResponseTemplate::new(200).set_body_json(fixtures::budget_mutate_response()))
-        .expect(1)
-        .mount(&server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path(format!("/customers/{CUSTOMER_ID}/campaigns:mutate")))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(fixtures::campaign_mutate_response()),
-        )
+        .and(path(format!("/customers/{CUSTOMER_ID}/googleAds:mutate")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixtures::atomic_mutate_response()))
         .expect(1)
         .mount(&server)
         .await;
@@ -501,12 +543,12 @@ async fn test_create_campaign_extra_bidding_strategy_replaces_manual_cpc() {
         .expect("create_campaign should succeed");
 
     let requests = server.received_requests().await.unwrap();
-    let campaign_body = requests
+    let mutate_body = requests
         .iter()
-        .find(|r| r.url.path().ends_with("campaigns:mutate"))
+        .find(|r| r.url.path().ends_with("googleAds:mutate"))
         .map(|r| serde_json::from_slice::<serde_json::Value>(&r.body).unwrap())
-        .expect("campaigns:mutate request should exist");
-    let create = &campaign_body["operations"][0]["create"];
+        .expect("googleAds:mutate request should exist");
+    let create = &mutate_body["mutateOperations"][1]["campaignOperation"]["create"];
     assert!(
         create.get("maximizeConversionValue").is_some(),
         "extra bidding strategy must be forwarded: {create}"
