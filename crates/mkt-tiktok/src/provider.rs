@@ -151,7 +151,9 @@ impl MarketingProvider for TikTokProvider {
                 ));
             }
             if let Some(limit) = filters.limit {
-                params.push(("page_size", limit.to_string()));
+                // /campaign/get/ rejects page_size above its documented
+                // maximum, so clamp instead of forwarding blindly.
+                params.push(("page_size", limit.min(MAX_PAGE_SIZE).to_string()));
             }
             if let Some(cursor) = &filters.cursor {
                 params.push(("page", cursor.clone()));
