@@ -100,6 +100,64 @@ fn unknown_subcommand_shows_error() {
         .failure();
 }
 
+/// `--output` must honor the `MKT_OUTPUT` env var for flag/env parity in CI.
+#[test]
+fn output_format_resolves_from_env() {
+    let output = Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["providers"])
+        .env("MKT_OUTPUT", "json")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str::<serde_json::Value>(stdout.trim())
+        .expect("MKT_OUTPUT=json must produce JSON on stdout");
+}
+
+/// The env/flag parity must be discoverable: `--help` documents the env
+/// var names, and an invalid env value is rejected like an invalid flag.
+#[test]
+fn env_parity_is_documented_and_validated() {
+    Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("MKT_PROFILE"))
+        .stdout(predicate::str::contains("MKT_OUTPUT"));
+
+    Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["providers"])
+        .env("MKT_OUTPUT", "bogus-format")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("invalid value 'bogus-format'"));
+}
+
+/// --quiet and --verbose contradict each other and must be rejected.
+#[test]
+fn quiet_conflicts_with_verbose() {
+    Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["--quiet", "--verbose", "providers"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+/// Short flags for the most common agent/script options.
+#[test]
+fn short_flags_work() {
+    let output = Command::cargo_bin("mkt")
+        .unwrap()
+        .args(["-o", "json", "providers"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str::<serde_json::Value>(stdout.trim()).expect("-o json must produce JSON");
+}
+
 // ── Exit code + structured error contract (for agents/scripts) ────────────────
 
 /// Missing credentials must exit with code 3 (auth error).

@@ -29,19 +29,26 @@ Use --dry-run on any mutating command to preview without executing.";
 #[command(name = "mkt", version, about, long_about = None, after_help = EXIT_CODES_HELP)]
 pub struct Cli {
     /// Profile to use.
-    #[arg(long, default_value = "default", global = true)]
+    #[arg(long, env = "MKT_PROFILE", default_value = "default", global = true)]
     pub profile: String,
 
     /// Output format.
-    #[arg(long, default_value = "table", value_enum, global = true)]
+    #[arg(
+        short = 'o',
+        long,
+        env = "MKT_OUTPUT",
+        default_value = "table",
+        value_enum,
+        global = true
+    )]
     pub output: OutputFormatArg,
 
     /// Enable debug logging.
-    #[arg(long, global = true)]
+    #[arg(short = 'v', long, global = true, conflicts_with = "quiet")]
     pub verbose: bool,
 
     /// Suppress all output except errors.
-    #[arg(long, global = true)]
+    #[arg(short = 'q', long, global = true)]
     pub quiet: bool,
 
     /// Show what would happen without executing.
