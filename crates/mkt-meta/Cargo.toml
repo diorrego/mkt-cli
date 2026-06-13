@@ -17,10 +17,13 @@ workspace = true
 mkt-cli-core = { path = "../mkt-core", version = "0.2.0" }
 base64.workspace = true
 chrono.workspace = true
+hex.workspace = true
+hmac.workspace = true
 reqwest.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

@@ -45,11 +45,20 @@ pub fn build_meta(
         .and_then(|c| c.api_version.as_deref())
         .unwrap_or("v25.0");
 
-    let client = mkt_meta::MetaClient::new(
+    let mut client = mkt_meta::MetaClient::new(
         secrecy::SecretString::from(token.expose_secret().to_string()),
         ad_account_id,
         Some(api_version),
     )?;
+
+    // Optional app secret: enables appsecret_proof on every Graph API
+    // call (required by apps with "Require App Secret" enabled).
+    let app_secret = std::env::var("MKT_META_APP_SECRET")
+        .ok()
+        .or_else(|| meta_config.and_then(|c| c.app_secret.clone()));
+    if let Some(secret) = app_secret {
+        client = client.with_app_secret(secrecy::SecretString::from(secret));
+    }
 
     let page_id = meta_config
         .and_then(|c| c.page_id.clone())

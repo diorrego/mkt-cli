@@ -114,6 +114,11 @@ pub struct MetaConfig {
     /// User access token (overridden by `MKT_META_ACCESS_TOKEN` env var).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
+    /// App secret enabling `appsecret_proof` on every Graph API call
+    /// (overridden by `MKT_META_APP_SECRET` env var). Optional: only
+    /// needed when the app has "Require App Secret" enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_secret: Option<String>,
     /// Ad account ID (e.g. `act_123456789`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ad_account_id: Option<String>,
@@ -199,6 +204,24 @@ ad_account_id = "act_123"
         let meta = profile.meta.as_ref().expect("meta config");
         assert_eq!(meta.access_token.as_deref(), Some("EAAB123"));
         assert_eq!(meta.ad_account_id.as_deref(), Some("act_123"));
+        assert_eq!(
+            meta.app_secret, None,
+            "app_secret is optional and defaults to None"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn parse_meta_app_secret() {
+        let toml_str = r#"
+[profiles.test.meta]
+access_token = "EAAB123"
+app_secret = "shhh-secret"
+"#;
+        let config: MktConfig = toml::from_str(toml_str).expect("parse TOML");
+        let profile = config.profile("test").expect("profile exists");
+        let meta = profile.meta.as_ref().expect("meta config");
+        assert_eq!(meta.app_secret.as_deref(), Some("shhh-secret"));
     }
 
     #[test]
