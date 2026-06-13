@@ -9,3 +9,4 @@ coverage/
 
 # Prompts and development notes
 dev/
+.claude/
