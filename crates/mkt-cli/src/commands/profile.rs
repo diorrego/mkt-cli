@@ -87,15 +87,10 @@ fn set_profile(
     let config_dir = config::config_dir()?;
     std::fs::create_dir_all(&config_dir)?;
 
-    // Write the config file with restrictive permissions.
+    // Owner-only from the first byte: chmod-after-write would leave a
+    // window where the umask decides who can read the tokens.
     let config_path = config::config_file()?;
-    std::fs::write(&config_path, toml_content)?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o600))?;
-    }
+    config::write_private(&config_path, &toml_content)?;
 
     Ok(format!(
         "Profile '{name}' saved to {}.",
