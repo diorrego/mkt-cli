@@ -100,6 +100,27 @@ pub fn campaign_resource_name(customer_id: &str, campaign_id: &str) -> String {
     format!("customers/{customer_id}/campaigns/{campaign_id}")
 }
 
+/// Escape a user-supplied value for use inside a GAQL `LIKE` pattern.
+///
+/// Backslashes and quotes are escaped, and the `LIKE` wildcards `%` and
+/// `_` are wrapped in brackets so they match literally — a campaign
+/// named "50% off" must not act as a wildcard.
+#[must_use]
+pub fn escape_gaql_like(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for c in value.chars() {
+        match c {
+            '\\' => escaped.push_str("\\\\"),
+            '\'' => escaped.push_str("\\'"),
+            '%' => escaped.push_str("[%]"),
+            '_' => escaped.push_str("[_]"),
+            '[' => escaped.push_str("[[]"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
+}
+
 /// Build the `campaignBudgets:mutate` create operation for a new campaign.
 ///
 /// The budget name embeds the campaign name for traceability; Google
@@ -482,5 +503,14 @@ mod tests {
             row.dimensions.get("date").map(String::as_str),
             Some("2026-03-01")
         );
+    }
+
+    #[test]
+    fn test_escape_gaql_like_neutralizes_wildcards_and_quotes() {
+        assert_eq!(escape_gaql_like("50% off"), "50[%] off");
+        assert_eq!(escape_gaql_like("foo_bar"), "foo[_]bar");
+        assert_eq!(escape_gaql_like("it's"), "it\\'s");
+        assert_eq!(escape_gaql_like("a[b]"), "a[[]b]");
+        assert_eq!(escape_gaql_like("plain"), "plain");
     }
 }
