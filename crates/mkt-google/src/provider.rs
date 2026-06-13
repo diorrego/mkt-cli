@@ -93,8 +93,9 @@ impl MarketingProvider for GoogleProvider {
                 ));
             }
             if let Some(name) = &filters.name_contains {
-                // GAQL LIKE with % wildcards; single quotes escaped.
-                let escaped = name.replace('\'', "\\'");
+                // GAQL LIKE: quotes escaped, %/_/[ neutralized so user
+                // input matches literally.
+                let escaped = mapping::escape_gaql_like(name);
                 conditions.push(format!("campaign.name LIKE '%{escaped}%'"));
             }
             if !conditions.is_empty() {
