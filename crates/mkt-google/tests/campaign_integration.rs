@@ -517,6 +517,80 @@ async fn test_create_campaign_extra_bidding_strategy_replaces_manual_cpc() {
     );
 }
 
+/// GAQL search results above one page must be aggregated by following
+/// nextPageToken — silent truncation loses spend data.
+#[tokio::test]
+async fn test_get_insights_follows_page_tokens() {
+    let server = MockServer::start().await;
+
+    // Page 2: matched by its pageToken; mounted first (more specific).
+    Mock::given(method("POST"))
+        .and(path(format!("/customers/{CUSTOMER_ID}/googleAds:search")))
+        .and(body_partial_json(
+            serde_json::json!({ "pageToken": "TOK2" }),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "results": [{
+                "campaign": { "id": "2", "name": "B" },
+                "segments": { "date": "2026-03-02" },
+                "metrics": { "impressions": "10", "clicks": "1", "costMicros": "1000000" }
+            }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    // Page 1: returns a nextPageToken.
+    Mock::given(method("POST"))
+        .and(path(format!("/customers/{CUSTOMER_ID}/googleAds:search")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "results": [{
+                "campaign": { "id": "1", "name": "A" },
+                "segments": { "date": "2026-03-01" },
+                "metrics": { "impressions": "20", "clicks": "2", "costMicros": "2000000" }
+            }],
+            "nextPageToken": "TOK2"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let report = provider
+        .get_insights(&InsightsQuery::default())
+        .await
+        .expect("paged insights should succeed");
+    assert_eq!(report.rows.len(), 2, "rows from both pages must aggregate");
+}
+
+/// A caller-provided cursor must be forwarded as the search pageToken.
+#[tokio::test]
+async fn test_list_campaigns_forwards_cursor_as_page_token() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path(format!("/customers/{CUSTOMER_ID}/googleAds:search")))
+        .and(body_partial_json(
+            serde_json::json!({ "pageToken": "CUR1" }),
+        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(fixtures::campaigns_search_response()),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = make_provider(&server.uri());
+    let filters = CampaignFilters {
+        cursor: Some("CUR1".into()),
+        ..Default::default()
+    };
+    provider
+        .list_campaigns(&filters)
+        .await
+        .expect("cursor page should load");
+}
+
 // ── errors & health ───────────────────────────────────────────────────────────
 
 /// Verify a Google API error response maps to `MktError` with the HTTP status.

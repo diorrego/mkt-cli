@@ -106,8 +106,26 @@ impl GoogleClient {
     /// [`MktError::Http`] for transport failures.
     #[instrument(skip(self, query), fields(provider = "google"))]
     pub async fn search(&self, query: &str) -> Result<serde_json::Value> {
+        self.search_page(query, None).await
+    }
+
+    /// Run a GAQL query requesting a specific results page.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MktError::ApiError`] for non-2xx responses and
+    /// [`MktError::Http`] for transport failures.
+    #[instrument(skip(self, query, page_token), fields(provider = "google"))]
+    pub async fn search_page(
+        &self,
+        query: &str,
+        page_token: Option<&str>,
+    ) -> Result<serde_json::Value> {
         let path = format!("customers/{}/googleAds:search", self.customer_id);
-        let body = serde_json::json!({ "query": query });
+        let mut body = serde_json::json!({ "query": query });
+        if let Some(token) = page_token {
+            body["pageToken"] = serde_json::Value::String(token.to_string());
+        }
         self.post(&path, &body, OpKind::Read).await
     }
 
