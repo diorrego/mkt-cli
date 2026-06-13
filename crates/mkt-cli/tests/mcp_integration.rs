@@ -145,3 +145,61 @@ fn tools_call_answers_for_all_providers() {
         );
     }
 }
+
+/// `dry_run: true` on a mutating tool must succeed WITHOUT credentials
+/// and describe the action instead of executing it — the same preview
+/// contract the CLI offers with --dry-run.
+#[test]
+fn tools_call_create_dry_run_previews_without_credentials() {
+    let stdout = run_mcp_without_credentials(handshake_then_call(
+        "campaign_create",
+        &serde_json::json!({
+            "provider": "meta",
+            "name": "Preview",
+            "objective": "OUTCOME_TRAFFIC",
+            "dry_run": true
+        }),
+    ));
+    let response = call_response(&stdout);
+    assert!(
+        response.get("error").is_none(),
+        "dry run must not need credentials: {response}"
+    );
+    let text = response["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        text.contains("dry_run") && text.contains("Preview"),
+        "dry run must echo the would-be action: {text}"
+    );
+    assert!(
+        text.contains("PAUSED") || text.contains("paused"),
+        "the preview must state the paused-by-default contract: {text}"
+    );
+}
+
+/// `dry_run: true` on campaign_set_status must preview the transition.
+#[test]
+fn tools_call_set_status_dry_run_previews() {
+    let stdout = run_mcp_without_credentials(handshake_then_call(
+        "campaign_set_status",
+        &serde_json::json!({
+            "provider": "meta",
+            "campaign_id": "c1",
+            "status": "active",
+            "dry_run": true
+        }),
+    ));
+    let response = call_response(&stdout);
+    assert!(
+        response.get("error").is_none(),
+        "dry run must not need credentials: {response}"
+    );
+    let text = response["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        text.contains("active") && text.contains("c1"),
+        "the preview must describe the transition: {text}"
+    );
+}
