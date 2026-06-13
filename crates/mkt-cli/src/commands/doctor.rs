@@ -33,6 +33,9 @@ pub fn execute(config_path: Option<&std::path::Path>) -> Result<String> {
     match config_file {
         Some(f) if f.exists() => {
             lines.push(format!("  [ok] Config file: {}", f.display()));
+            if let Some(warning) = config::permissions_warning(&f) {
+                lines.push(format!("  [warn] {warning}"));
+            }
             match config::MktConfig::load_from_file(&f) {
                 Ok(cfg) => {
                     let profiles: Vec<_> = cfg.profiles.keys().collect();
