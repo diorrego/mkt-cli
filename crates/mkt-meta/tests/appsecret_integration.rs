@@ -65,8 +65,7 @@ struct BodyLacksKey(&'static str);
 impl wiremock::Match for BodyLacksKey {
     fn matches(&self, request: &wiremock::Request) -> bool {
         serde_json::from_slice::<serde_json::Value>(&request.body)
-            .map(|json| json.get(self.0).is_none())
-            .unwrap_or(false)
+            .is_ok_and(|json| json.get(self.0).is_none())
     }
 }
 
