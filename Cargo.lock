@@ -1248,6 +1248,7 @@ dependencies = [
 name = "mkt-cli"
 version = "0.2.0"
 dependencies = [
+ "anstream",
  "anyhow",
  "assert_cmd",
  "chrono",
